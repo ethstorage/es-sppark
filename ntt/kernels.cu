@@ -207,5 +207,6 @@ void get_intermediate_roots(fr_t& root0, fr_t& root1,
 
 # include "kernels/gs_mixed_radix_wide.cu"
 # include "kernels/ct_mixed_radix_wide.cu"
+# include "kernels/arith.cu"
 
 #endif /* __NTT_KERNELS_CU__ */

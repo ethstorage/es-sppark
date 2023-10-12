@@ -35,6 +35,16 @@ extern "C" {
     ) -> cuda::Error;
 }
 
+extern "C" {
+    fn compute_gate_constraint(
+          device_id: usize,
+          lg_domain_size: u32,
+          a: *mut core::ffi::c_void,
+          b: *mut core::ffi::c_void,
+          c: *mut core::ffi::c_void,
+    ) -> cuda::Error;
+}
+
 /// Compute an in-place NTT on the input data.
 #[allow(non_snake_case)]
 pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
@@ -129,6 +139,33 @@ pub fn coset_iNTT<T>(
             order,
             NTTDirection::Inverse,
             NTTType::Coset,
+        )
+    };
+
+    if err.code != 0 {
+        panic!("{}", String::from(err));
+    }
+}
+
+pub fn gate_constraint_sat<T>(device_id: usize, a: &mut [T], b : &mut [T], c : &mut [T]) {
+    // First check all the lengths are the same
+    let aux = vec![a.len(), b.len(), c.len()];
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!("All vectors must have the same length");
+    }
+    let len = aux[0];
+    if (len & (len - 1)) != 0 {
+        panic!("inout.len() is not power of 2");
+    }
+
+    let err = unsafe {
+        compute_gate_constraint(
+            device_id,
+            len.trailing_zeros(),
+            a.as_mut_ptr() as *mut core::ffi::c_void,
+            b.as_mut_ptr() as *mut core::ffi::c_void,
+            c.as_mut_ptr() as *mut core::ffi::c_void,
         )
     };
 

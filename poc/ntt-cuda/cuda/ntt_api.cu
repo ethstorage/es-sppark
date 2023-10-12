@@ -17,6 +17,7 @@
 #endif
 
 #include <ntt/ntt.cuh>
+#include <ntt/arithmetic.cuh>
 
 #ifndef __CUDA_ARCH__
 
@@ -32,4 +33,12 @@ RustError compute_ntt(size_t device_id, fr_t* inout, uint32_t lg_domain_size,
                      ntt_order, ntt_direction, ntt_type);
 }
 
+extern "C"
+RustError compute_gate_constraint(size_t device_id, uint32_t lg_domain_size,
+                                  fr_t* a, fr_t* b, fr_t* c)
+{
+    auto& gpu = select_gpu(device_id);
+
+    return ARITHMETIC::gate_constraint(gpu, lg_domain_size, a, b, c);
+}
 #endif

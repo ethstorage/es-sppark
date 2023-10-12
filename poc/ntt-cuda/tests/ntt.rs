@@ -66,7 +66,51 @@ fn test_against_arkworks() {
         }
     }
 
+    fn test_arith<
+        F: PrimeField,
+        T: DomainCoeff<F> + UniformRand + core::fmt::Debug + Eq,
+        R: ark_std::rand::Rng,
+        D: EvaluationDomain<F>,
+    >(
+        rng: &mut R,
+    ) {
+        for lg_domain_size in 1..20 + 4 * !cfg!(debug_assertions) as i32 {
+            let domain_size = 1usize << lg_domain_size;
+
+            let _domain = D::new(domain_size).unwrap();
+
+            let mut a = vec![];
+            for _ in 0..domain_size {
+                a.push(T::rand(rng));
+            }
+            let mut b = vec![];
+            for _ in 0..domain_size {
+                b.push(T::rand(rng));
+            }
+            let mut c = vec![];
+            for i in 0..domain_size {
+                c.push(a[i] + b[i]);
+            }
+
+            let mut atest = a.clone();
+            let mut btest = b.clone();
+            // Then we fill ctest with zeros
+            let mut ctest = vec![T::zero(); domain_size];
+
+            ntt_cuda::gate_constraint_sat(
+                DEFAULT_GPU,
+                &mut atest,
+                &mut btest,
+                &mut ctest,
+            );
+            assert!(ctest == c);
+        }
+    }
+
+
     let rng = &mut test_rng();
 
     test_ntt::<Fr, Fr, _, GeneralEvaluationDomain<Fr>>(rng);
+    test_arith::<Fr, Fr, _, GeneralEvaluationDomain<Fr>>(rng);
+
 }
