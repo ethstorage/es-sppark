@@ -35,10 +35,10 @@ RustError compute_ntt(size_t device_id, fr_t* inout, uint32_t lg_domain_size,
 
 extern "C"
 RustError compute_gate_constraint(size_t device_id, uint32_t lg_domain_size,
-                                  fr_t* a, fr_t* b, fr_t* c)
+                                  fr_t* out POINTER_LIST(MAKE_ARGUMENT))
 {
     auto& gpu = select_gpu(device_id);
 
-    return ARITHMETIC::gate_constraint(gpu, lg_domain_size, a, b, c);
+    return ARITHMETIC::gate_constraint(gpu, lg_domain_size, out POINTER_LIST(MAKE_PARAMETER));
 }
 #endif

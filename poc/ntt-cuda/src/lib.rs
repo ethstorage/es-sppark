@@ -39,9 +39,21 @@ extern "C" {
     fn compute_gate_constraint(
           device_id: usize,
           lg_domain_size: u32,
-          a: *mut core::ffi::c_void,
-          b: *mut core::ffi::c_void,
-          c: *mut core::ffi::c_void,
+          out: *mut core::ffi::c_void,
+          w_l: *const core::ffi::c_void,
+          w_r: *const core::ffi::c_void,
+          w_o: *const core::ffi::c_void,
+          w_4: *const core::ffi::c_void,
+          q_l: *const core::ffi::c_void,
+          q_r: *const core::ffi::c_void,
+          q_o: *const core::ffi::c_void,
+          q_4: *const core::ffi::c_void,
+          q_hl: *const core::ffi::c_void,
+          q_hr: *const core::ffi::c_void,
+          q_h4: *const core::ffi::c_void,
+          q_c: *const core::ffi::c_void,
+          q_arith: *const core::ffi::c_void,
+          q_m: *const core::ffi::c_void,
     ) -> cuda::Error;
 }
 
@@ -147,25 +159,54 @@ pub fn coset_iNTT<T>(
     }
 }
 
-pub fn gate_constraint_sat<T>(device_id: usize, a: &mut [T], b : &mut [T], c : &mut [T]) {
-    // First check all the lengths are the same
-    let aux = vec![a.len(), b.len(), c.len()];
+pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
+    w_l: &[T], w_r: &[T], w_o: &[T], w_4: &[T],
+    q_l: &[T], q_r: &[T], q_o: &[T], q_4: &[T],
+    q_hl: &[T], q_hr: &[T], q_h4: &[T], q_c: &[T],
+    q_arith: &[T], q_m: &[T],
+) {
+
+    // First check whether majority of the vectors have the same length
+    // except for w_l w_r and W_4, they are longer than the rest
+    let aux = vec![out.len(), w_o.len(),q_l.len(), q_r.len(), q_o.len(),
+        q_4.len(), q_hl.len(), q_hr.len(),
+        q_h4.len(), q_c.len(), q_arith.len(), q_m.len()];
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
-        panic!("All vectors must have the same length");
+        panic!("q series must have the same length, plus out and w_o");
     }
     let len = aux[0];
+    
+    // Second check w series, they should be 8 elements longer than the q series
+    assert!(w_l.len() == w_r.len());
+    assert!(w_r.len() == w_4.len());
+    assert!(w_4.len() == len + 8);
+
+    // Third check the length of the input vectors, should be power of 2
     if (len & (len - 1)) != 0 {
         panic!("inout.len() is not power of 2");
     }
 
+    // Call GPU kernel
     let err = unsafe {
         compute_gate_constraint(
             device_id,
             len.trailing_zeros(),
-            a.as_mut_ptr() as *mut core::ffi::c_void,
-            b.as_mut_ptr() as *mut core::ffi::c_void,
-            c.as_mut_ptr() as *mut core::ffi::c_void,
+            out.as_mut_ptr() as *mut core::ffi::c_void,
+            w_l.as_ptr() as *const core::ffi::c_void,
+            w_r.as_ptr() as *const core::ffi::c_void,
+            w_o.as_ptr() as *const core::ffi::c_void,
+            w_4.as_ptr() as *const core::ffi::c_void,
+            q_l.as_ptr() as *const core::ffi::c_void,
+            q_r.as_ptr() as *const core::ffi::c_void,
+            q_o.as_ptr() as *const core::ffi::c_void,
+            q_4.as_ptr() as *const core::ffi::c_void,
+            q_hl.as_ptr() as *const core::ffi::c_void,
+            q_hr.as_ptr() as *const core::ffi::c_void,
+            q_h4.as_ptr() as *const core::ffi::c_void,
+            q_c.as_ptr() as *const core::ffi::c_void,
+            q_arith.as_ptr() as *const core::ffi::c_void,
+            q_m.as_ptr() as *const core::ffi::c_void,
         )
     };
 

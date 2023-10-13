@@ -22,8 +22,8 @@
 class ARITHMETIC {
 
 public:
-    static RustError gate_constraint(const gpu_t& gpu, uint32_t lg_domain_size,
-                                      fr_t* a, fr_t* b, fr_t* c)
+    static RustError gate_constraint(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
+                                     POINTER_LIST(MAKE_ARGUMENT))
     {
         if (lg_domain_size == 0)
             return RustError{cudaSuccess};
@@ -32,20 +32,30 @@ public:
             gpu.select();
 
             size_t domain_size = (size_t)1 << lg_domain_size;
-            dev_ptr_t<fr_t> d_a{domain_size, gpu};
-            dev_ptr_t<fr_t> d_b{domain_size, gpu};
-            dev_ptr_t<fr_t> d_c{domain_size, gpu};
-            gpu.HtoD(&d_a[0], a, domain_size);
-            gpu.HtoD(&d_b[0], b, domain_size);
-            gpu.HtoD(&d_c[0], c, domain_size);
+
+#define MAKE_DEV_PTR(var) dev_ptr_t<fr_t> d_##var{domain_size, gpu};
+#define MAKE_HOST2DEVICE(var) gpu.HtoD(&d_##var[0], var, domain_size);
+#define MAKE_KERNEL_PARAMETER(var) , d_##var
+
+            POINTER_LIST(MAKE_DEV_PTR);
+            POINTER_LIST(MAKE_HOST2DEVICE);
+
+            dev_ptr_t<fr_t> d_out{domain_size, gpu};
 
             // First check if it could be stored inside one block
             size_t thread_size = domain_size <= GATE_CONSTRAINT_THREAD_SIZE ? domain_size : GATE_CONSTRAINT_THREAD_SIZE;
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
-            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_a, d_b, d_c);
+            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER));
 
-            gpu.DtoH(c, &d_c[0], domain_size);
+            auto err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                auto name = cudaGetErrorString(err);
+                std::cerr << "Error: " << name << std::endl;
+                throw cuda_error{err};
+            }
+            // Only needs to sync var `out`
+            gpu.DtoH(out, &d_out[0], domain_size);
             gpu.sync();
         } catch (const cuda_error& e) {
             gpu.sync();
@@ -61,5 +71,8 @@ public:
 };
 
 #undef GATE_CONSTRAINT_THREAD_SIZE
+#undef MAKE_DEV_PTR
+#undef MAKE_HOST2DEVICE
+#undef MAKE_KERNEL_PARAMETER
 #endif
 #endif
