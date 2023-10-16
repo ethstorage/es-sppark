@@ -3,6 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #define MAX_THREAD_NUM 1024
+#define NEXT 8 // 8 is the row of gate constraint, because we extend the domain by 8
+#define ONE fr_t::one()
+#define TWO (fr_t::one() + fr_t::one())
+#define THREE (fr_t::one() + fr_t::one() + fr_t::one())
+#define FOUR (fr_t::one() + fr_t::one() + fr_t::one() + fr_t::one())
 
 // Hardcode the SBOX in constant time
 #define POW_SBOX(n) ((n) * (n) * (n) * (n) * (n))
@@ -23,15 +28,29 @@
     X(q_h4)      \
     X(q_c)       \
     X(q_arith)   \
-    X(q_m)
+    X(q_m)       \
+    X(r_s)
+
+#define CHALLENGE_LIST(X) \
+    X(range_challenge)
 
 // Compose a argument list of following function
-#define MAKE_ARGUMENT(var) , const fr_t* var 
+#define MAKE_PTR_ARGUMENT(var) , const fr_t* var
+
+// Compose a argument list of real parameters
+#define MAKE_REAL_ARGUMENT(var) , var
 
 // Compose a parameter list of following function
 #define MAKE_PARAMETER(var) , var
 
-__device__ fr_t compute_quotient_i(size_t i POINTER_LIST(MAKE_ARGUMENT))
+// Total argument
+#define TOTAL_ARGUMENT \
+    POINTER_LIST(MAKE_PTR_ARGUMENT), CHALLENGE_LIST(MAKE_REAL_ARGUMENT)
+
+#define TOTAL_PARAMETER \
+    POINTER_LIST(MAKE_PARAMETER), CHALLENGE_LIST(MAKE_PARAMETER)
+
+__device__ fr_t compute_quotient_i(size_t i TOTAL_ARGUMENT)
 {
     return ((w_l[i] * w_r[i] * q_m[i])
             + (w_l[i] * q_l[i])
@@ -45,9 +64,31 @@ __device__ fr_t compute_quotient_i(size_t i POINTER_LIST(MAKE_ARGUMENT))
             * q_arith[i];
 }
 
+__device__ fr_t delta(fr_t f)
+{
+    fr_t f_1 = f - ONE;
+    fr_t f_2 = f - TWO;
+    fr_t f_3 = f - THREE;
+    return f * f_1 * f_2 * f_3; 
+}
+
+__device__ fr_t range_quoteint_term(size_t i TOTAL_ARGUMENT)
+{
+   fr_t kappa = range_challenge * range_challenge;
+   fr_t kappa_sq = kappa * kappa;
+   fr_t kappa_cu = kappa_sq * kappa;
+   fr_t b1 = delta(w_o[i] - FOUR * w_4[i]);
+   fr_t b2 = delta(w_r[i] - FOUR * w_o[i]) * kappa;
+   fr_t b3 = delta(w_l[i] - FOUR * w_r[i]) * kappa_sq;
+   // NOTICE: w_4 is next one, should add next line
+   fr_t b4 = delta(w_4[i + NEXT] - FOUR * w_l[i]) * kappa_cu;
+
+   return r_s[i] * (b1 + b2 + b3 + b4) * range_challenge;
+}
+
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void gate_constraint_sat_kernel(const uint lg_domain_size, fr_t* out
-                                POINTER_LIST(MAKE_ARGUMENT))
+                                TOTAL_ARGUMENT)
 {
 #if (__CUDACC_VER_MAJOR__-0) >= 11
     __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
@@ -60,7 +101,14 @@ void gate_constraint_sat_kernel(const uint lg_domain_size, fr_t* out
         return;
     }
 
-    out[tid] = compute_quotient_i(tid POINTER_LIST(MAKE_PARAMETER));
+    out[tid] = compute_quotient_i(tid TOTAL_PARAMETER) + 
+                range_quoteint_term(tid TOTAL_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM
+#undef NEXT
+#undef ONE
+#undef TWO
+#undef THREE
+#undef FOUR
+#undef POW_SBOX

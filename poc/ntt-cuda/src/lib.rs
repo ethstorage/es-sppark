@@ -54,6 +54,8 @@ extern "C" {
           q_c: *const core::ffi::c_void,
           q_arith: *const core::ffi::c_void,
           q_m: *const core::ffi::c_void,
+          r_s: *const core::ffi::c_void,
+          
     ) -> cuda::Error;
 }
 

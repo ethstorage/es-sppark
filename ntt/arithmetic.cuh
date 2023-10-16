@@ -23,7 +23,7 @@ class ARITHMETIC {
 
 public:
     static RustError gate_constraint(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
-                                     POINTER_LIST(MAKE_ARGUMENT))
+                                     TOTAL_ARGUMENT)
     {
         if (lg_domain_size == 0)
             return RustError{cudaSuccess};
@@ -46,7 +46,8 @@ public:
             size_t thread_size = domain_size <= GATE_CONSTRAINT_THREAD_SIZE ? domain_size : GATE_CONSTRAINT_THREAD_SIZE;
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
-            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER));
+            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER),
+                                                                            CHALLENGE_LIST(MAKE_PARAMETER));
 
             auto err = cudaGetLastError();
             if (err != cudaSuccess) {
