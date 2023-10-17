@@ -40,14 +40,20 @@ public:
             POINTER_LIST(MAKE_DEV_PTR);
             POINTER_LIST(MAKE_HOST2DEVICE);
 
+            // We only have 4 challenges
+            // Because it is associated with Macro, if you want to change it name
+            // change the macro as well
+            dev_ptr_t<fr_t> d_challenges{4, gpu};
+            gpu.HtoD(&d_challenges[0], challenges, 4);
+
             dev_ptr_t<fr_t> d_out{domain_size, gpu};
 
             // First check if it could be stored inside one block
             size_t thread_size = domain_size <= GATE_CONSTRAINT_THREAD_SIZE ? domain_size : GATE_CONSTRAINT_THREAD_SIZE;
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
-            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER),
-                                                                            CHALLENGE_LIST(MAKE_PARAMETER));
+            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
+                                                                            AUX_LIST(MAKE_KERNEL_PARAMETER));
 
             auto err = cudaGetLastError();
             if (err != cudaSuccess) {

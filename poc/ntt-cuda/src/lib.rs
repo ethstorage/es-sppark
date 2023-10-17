@@ -55,7 +55,8 @@ extern "C" {
           q_arith: *const core::ffi::c_void,
           q_m: *const core::ffi::c_void,
           r_s: *const core::ffi::c_void,
-          
+          l_s: *const core::ffi::c_void,
+          challenges: *const core::ffi::c_void, 
     ) -> cuda::Error;
 }
 
@@ -165,14 +166,15 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
     w_l: &[T], w_r: &[T], w_o: &[T], w_4: &[T],
     q_l: &[T], q_r: &[T], q_o: &[T], q_4: &[T],
     q_hl: &[T], q_hr: &[T], q_h4: &[T], q_c: &[T],
-    q_arith: &[T], q_m: &[T],
+    q_arith: &[T], q_m: &[T], r_s: &[T], l_s: &[T],
+    challenges: &[T],
 ) {
 
     // First check whether majority of the vectors have the same length
     // except for w_l w_r and W_4, they are longer than the rest
     let aux = vec![out.len(), w_o.len(),q_l.len(), q_r.len(), q_o.len(),
         q_4.len(), q_hl.len(), q_hr.len(),
-        q_h4.len(), q_c.len(), q_arith.len(), q_m.len()];
+        q_h4.len(), q_c.len(), q_arith.len(), q_m.len(), r_s.len()];
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
         panic!("q series must have the same length, plus out and w_o");
@@ -183,6 +185,9 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
     assert!(w_l.len() == w_r.len());
     assert!(w_r.len() == w_4.len());
     assert!(w_4.len() == len + 8);
+
+    // challenges only have 4 elements
+    assert!(challenges.len() == 4);
 
     // Third check the length of the input vectors, should be power of 2
     if (len & (len - 1)) != 0 {
@@ -209,6 +214,9 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
             q_c.as_ptr() as *const core::ffi::c_void,
             q_arith.as_ptr() as *const core::ffi::c_void,
             q_m.as_ptr() as *const core::ffi::c_void,
+            r_s.as_ptr() as *const core::ffi::c_void,
+            l_s.as_ptr() as *const core::ffi::c_void,
+            challenges.as_ptr() as *const core::ffi::c_void,
         )
     };
 
