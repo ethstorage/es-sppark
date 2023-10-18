@@ -13,6 +13,9 @@
 #define EIGHTEEN (NINE * TWO)
 #define EIGHTY_ONE (NINE * NINE)
 #define EIGHTY_THREE (EIGHTY_ONE + TWO)
+#define K1 (THREE + FOUR)  // 7
+#define K2 (THREE * FOUR + ONE)  // 13
+#define K3 (TWO * K1 + THREE) // 17
 
 // Hardcode the SBOX in constant time
 #define POW_SBOX(n) ((n) * (n) * (n) * (n) * (n))
@@ -22,32 +25,41 @@
 // And it would be used in following files as well
 // All of them are equal length, except w_l, w_r, w_4, they are extended by 8
 #define POINTER_LIST(X) \
-    X(w_l)       \
-    X(w_r)       \
-    X(w_o)       \
-    X(w_4)       \
-    X(q_l)       \
-    X(q_r)       \
-    X(q_o)       \
-    X(q_4)       \
-    X(q_hl)      \
-    X(q_hr)      \
-    X(q_h4)      \
-    X(q_c)       \
-    X(q_arith)   \
-    X(q_m)       \
-    X(r_s)       \
-    X(l_s)       \
-    X(fbsm_s)    \
-    X(vgca_s)    \
-    X(pi)
+    X(w_l)              \
+    X(w_r)              \
+    X(w_o)              \
+    X(w_4)              \
+    X(q_l)              \
+    X(q_r)              \
+    X(q_o)              \
+    X(q_4)              \
+    X(q_hl)             \
+    X(q_hr)             \
+    X(q_h4)             \
+    X(q_c)              \
+    X(q_arith)          \
+    X(q_m)              \
+    X(r_s)              \
+    X(l_s)              \
+    X(fbsm_s)           \
+    X(vgca_s)           \
+    X(pi)               \
+    X(z)                \
+    X(perm_linear)      \
+    X(sigma_l)          \
+    X(sigma_r)          \
+    X(sigma_o)          \
+    X(sigma_4)          \
+    X(l1_alpha_sq)  
 
 
 // Auxilary list
-// Challenges have 4 elements, curve_params have 2 elements
+// Challenges has 4 elements, curve_params has 2 elements
+// Permutation parameters has 3 elements
 #define AUX_LIST(X) \
     X(challenges)   \
-    X(curve_params)
+    X(curve_params) \
+    X(perm_params)
 
 #define RANGE_CHALLENGE challenges[0]
 #define LOGIC_CHALLENGE challenges[1]
@@ -56,6 +68,10 @@
 
 #define P_COEFF_A curve_params[0]
 #define P_COEFF_D curve_params[1]
+
+#define ALPHA perm_params[0]
+#define BETA perm_params[1]
+#define GAMMA perm_params[2]
 
 // Compose a argument list of following function
 #define MAKE_PTR_ARGUMENT(var) , const fr_t* var
@@ -71,7 +87,7 @@
     POINTER_LIST(MAKE_PARAMETER) AUX_LIST(MAKE_PARAMETER)
 
 /*-------------------------GATE SAT---------------------------------------*/
-__device__ fr_t compute_quotient_i(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t compute_quotient_i(size_t i TOTAL_ARGUMENT)
 {
     return ((w_l[i] * w_r[i] * q_m[i])
             + (w_l[i] * q_l[i])
@@ -85,7 +101,7 @@ __device__ fr_t compute_quotient_i(size_t i TOTAL_ARGUMENT)
             * q_arith[i];
 }
 
-__device__ fr_t delta(fr_t f)
+__device__ __forceinline__ fr_t delta(fr_t f)
 {
     fr_t f_1 = f - ONE;
     fr_t f_2 = f - TWO;
@@ -93,7 +109,7 @@ __device__ fr_t delta(fr_t f)
     return f * f_1 * f_2 * f_3; 
 }
 
-__device__ fr_t range_quoteint_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t range_quoteint_term(size_t i TOTAL_ARGUMENT)
 {
    fr_t kappa = RANGE_CHALLENGE * RANGE_CHALLENGE;
    fr_t kappa_sq = kappa * kappa;
@@ -107,7 +123,7 @@ __device__ fr_t range_quoteint_term(size_t i TOTAL_ARGUMENT)
    return r_s[i] * (b1 + b2 + b3 + b4) * RANGE_CHALLENGE;
 }
 
-__device__ fr_t delta_xor_and(fr_t a, fr_t b, fr_t w, fr_t c, fr_t q_c)
+__device__ __forceinline__ fr_t delta_xor_and(fr_t a, fr_t b, fr_t w, fr_t c, fr_t q_c)
 {
     fr_t F = w
         * (w * (FOUR * w - EIGHTEEN * (a + b) + EIGHTY_ONE)
@@ -119,7 +135,7 @@ __device__ fr_t delta_xor_and(fr_t a, fr_t b, fr_t w, fr_t c, fr_t q_c)
     return E + B;
 }
 
-__device__ fr_t logic_quotient_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t logic_quotient_term(size_t i TOTAL_ARGUMENT)
 {
     fr_t kappa = RANGE_CHALLENGE * RANGE_CHALLENGE;
     fr_t kappa_sq = kappa * kappa;
@@ -144,18 +160,18 @@ __device__ fr_t logic_quotient_term(size_t i TOTAL_ARGUMENT)
 }
 
 // Extracts the bit value from the accumulated bit.
-__device__ fr_t extract_bit(fr_t curr_acc, fr_t next_acc)
+__device__ __forceinline__ fr_t extract_bit(fr_t curr_acc, fr_t next_acc)
 {
     return next_acc - curr_acc - curr_acc;
 }
 
 /// Ensures that the bit is either `+1`, `-1`, or `0`
-__device__ fr_t check_bit_consistency(fr_t bit)
+__device__ __forceinline__ fr_t check_bit_consistency(fr_t bit)
 {
     return bit * (bit - ONE) * (bit + ONE);
 }
 
-__device__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT)
 {
     fr_t kappa = SQAURE(FIXED_BASE_CHALLENGE);
     fr_t kappa_sq = SQAURE(kappa);
@@ -204,7 +220,7 @@ __device__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT)
     return fbsm_s[i] * checks * FIXED_BASE_CHALLENGE;
 }
 
-__device__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGUMENT)
 {
     fr_t x_1 = w_l[i];
     fr_t x_3 = w_l[i + NEXT];
@@ -236,8 +252,56 @@ __device__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGUMENT)
     return vgca_s[i] * (xy_consistency + x3_consistency + y3_consistency) * VAR_BASE_CHALLENGE;
 }
 
-/*--------------------------------------Permutation--------------------------------------------*/
+__device__ __forceinline__ fr_t gate_sat_term(size_t i TOTAL_ARGUMENT)
+{
+    return compute_quotient_i(i TOTAL_PARAMETER) + 
+                range_quoteint_term(i TOTAL_PARAMETER) +
+                logic_quotient_term(i TOTAL_PARAMETER) +
+                fixed_base_quoteint_term(i TOTAL_PARAMETER) +
+                curve_addition_quotient_term(i TOTAL_PARAMETER) +
+                pi[i];
+}
 
+/*--------------------------------------PERMUTATION--------------------------------------------*/
+__device__ __forceinline__ fr_t compute_quotient_identity_range_check_i(size_t i TOTAL_ARGUMENT)
+{
+    fr_t x = perm_linear[i];
+    return (w_l[i] + BETA * x + GAMMA)
+        * (w_r[i] + (BETA * K1 * x) + GAMMA)
+        * (w_o[i] + (BETA * K2 * x) + GAMMA)
+        * (w_4[i] + (BETA * K3 * x) + GAMMA)
+        * z[i]
+        * ALPHA;
+}
+
+__device__ __forceinline__ fr_t compute_quotient_copy_range_check_i(size_t i TOTAL_ARGUMENT)
+{
+    fr_t left_sigma_eval = sigma_l[i];
+    fr_t right_sigma_eval = sigma_r[i];
+    fr_t out_sigma_eval = sigma_o[i];
+    fr_t fourth_sigma_eval = sigma_4[i];
+    fr_t product = (w_l[i] + (BETA * left_sigma_eval) + GAMMA)
+        * (w_r[i] + (BETA * right_sigma_eval) + GAMMA)
+        * (w_o[i] + (BETA * out_sigma_eval) + GAMMA)
+        * (w_4[i] + (BETA * fourth_sigma_eval) + GAMMA)
+        * z[i + NEXT]
+        * ALPHA;
+    return -product;
+}
+
+__device__ __forceinline__ fr_t compute_quotient_term_check_one_i(size_t i TOTAL_ARGUMENT)
+{
+    return (z[i] - ONE) * l1_alpha_sq[i];
+}
+
+__device__ __forceinline__ fr_t permutation_term(size i TOTAL_ARGUMENT)
+{
+    return compute_quotient_identity_range_check_i(i TOTAL_PARAMETER) +
+                compute_quotient_copy_range_check_i(i TOTAL_PARAMETER) +
+                compute_quotient_term_check_one_i(i TOTAL_PARAMETER);
+}
+
+/*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
                                 TOTAL_ARGUMENT)
@@ -253,12 +317,8 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
         return;
     }
 
-    out[tid] = compute_quotient_i(tid TOTAL_PARAMETER) + 
-                range_quoteint_term(tid TOTAL_PARAMETER) +
-                logic_quotient_term(tid TOTAL_PARAMETER) +
-                fixed_base_quoteint_term(tid TOTAL_PARAMETER) +
-                curve_addition_quotient_term(tid TOTAL_PARAMETER) +
-                pi[tid];
+    out[tid] = gate_sat_term(tid TOTAL_PARAMETER)
+               + permutation_term(tid TOTAL_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM
@@ -271,6 +331,9 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
 #undef EIGHTEEN
 #undef EIGHTY_ONE
 #undef EIGHTY_THREE
+#undef K1
+#undef K2
+#undef K3
 #undef POW_SBOX
 #undef SQAURE
 #undef RANGE_CHALLENGE
@@ -279,3 +342,6 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
 #undef VAR_BASE_CHALLENGE
 #undef P_COEFF_A
 #undef P_COEFF_D
+#undef ALPHA
+#undef BETA
+#undef GAMMA
