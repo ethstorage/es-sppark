@@ -17,12 +17,12 @@
 
 #ifndef __CUDA_ARCH__
 
-#define GATE_CONSTRAINT_THREAD_SIZE 1024
+#define MAX_THREAD_SIZE 1024
 
 class ARITHMETIC {
 
 public:
-    static RustError gate_constraint(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
+    static RustError quotient_poly_gpu(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
                                      TOTAL_ARGUMENT)
     {
         if (lg_domain_size == 0)
@@ -53,10 +53,10 @@ public:
             dev_ptr_t<fr_t> d_out{domain_size, gpu};
 
             // First check if it could be stored inside one block
-            size_t thread_size = domain_size <= GATE_CONSTRAINT_THREAD_SIZE ? domain_size : GATE_CONSTRAINT_THREAD_SIZE;
+            size_t thread_size = domain_size <= MAX_THREAD_SIZE ? domain_size : MAX_THREAD_SIZE;
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
-            gate_constraint_sat_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
+            quotient_poly_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
                                                                             AUX_LIST(MAKE_KERNEL_PARAMETER));
 
             auto err = cudaGetLastError();
@@ -81,7 +81,7 @@ public:
     }
 };
 
-#undef GATE_CONSTRAINT_THREAD_SIZE
+#undef MAX_THREAD_SIZE
 #undef MAKE_DEV_PTR
 #undef MAKE_HOST2DEVICE
 #undef MAKE_KERNEL_PARAMETER

@@ -70,6 +70,7 @@
 #define TOTAL_PARAMETER \
     POINTER_LIST(MAKE_PARAMETER) AUX_LIST(MAKE_PARAMETER)
 
+/*-------------------------GATE SAT---------------------------------------*/
 __device__ fr_t compute_quotient_i(size_t i TOTAL_ARGUMENT)
 {
     return ((w_l[i] * w_r[i] * q_m[i])
@@ -235,8 +236,10 @@ __device__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGUMENT)
     return vgca_s[i] * (xy_consistency + x3_consistency + y3_consistency) * VAR_BASE_CHALLENGE;
 }
 
+/*--------------------------------------Permutation--------------------------------------------*/
+
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
-void gate_constraint_sat_kernel(const uint lg_domain_size, fr_t* out
+void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
                                 TOTAL_ARGUMENT)
 {
 #if (__CUDACC_VER_MAJOR__-0) >= 11

@@ -36,7 +36,7 @@ extern "C" {
 }
 
 extern "C" {
-    fn compute_gate_constraint(
+    fn compute_quotient_term(
           device_id: usize,
           lg_domain_size: u32,
           out: *mut core::ffi::c_void,
@@ -166,7 +166,7 @@ pub fn coset_iNTT<T>(
     }
 }
 
-pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
+pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
     w_l: &[T], w_r: &[T], w_o: &[T], w_4: &[T],
     q_l: &[T], q_r: &[T], q_o: &[T], q_4: &[T],
     q_hl: &[T], q_hr: &[T], q_h4: &[T], q_c: &[T],
@@ -204,7 +204,7 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
 
     // Call GPU kernel
     let err = unsafe {
-        compute_gate_constraint(
+        compute_quotient_term(
             device_id,
             len.trailing_zeros(),
             out.as_mut_ptr() as *mut core::ffi::c_void,
