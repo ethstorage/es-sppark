@@ -46,6 +46,10 @@ public:
             dev_ptr_t<fr_t> d_challenges{4, gpu};
             gpu.HtoD(&d_challenges[0], challenges, 4);
 
+            // We have two curve parameters
+            dev_ptr_t<fr_t> d_curve_params{2, gpu};
+            gpu.HtoD(&d_curve_params[0], curve_params, 2);
+
             dev_ptr_t<fr_t> d_out{domain_size, gpu};
 
             // First check if it could be stored inside one block

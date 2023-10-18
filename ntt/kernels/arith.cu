@@ -20,6 +20,7 @@
 
 // This MACRO is used to generate the argument list of following function
 // And it would be used in following files as well
+// All of them are equal length, except w_l, w_r, w_4, they are extended by 8
 #define POINTER_LIST(X) \
     X(w_l)       \
     X(w_r)       \
@@ -36,13 +37,25 @@
     X(q_arith)   \
     X(q_m)       \
     X(r_s)       \
-    X(l_s)
+    X(l_s)       \
+    X(fbsm_s)    \
+    X(vgca_s)    \
+    X(pi)
 
+
+// Auxilary list
+// Challenges have 4 elements, curve_params have 2 elements
 #define AUX_LIST(X) \
-    X(challenges)
+    X(challenges)   \
+    X(curve_params)
 
 #define RANGE_CHALLENGE challenges[0]
 #define LOGIC_CHALLENGE challenges[1]
+#define FIXED_BASE_CHALLENGE challenges[2]
+#define VAR_BASE_CHALLENGE challenges[3]
+
+#define P_COEFF_A curve_params[0]
+#define P_COEFF_D curve_params[1]
 
 // Compose a argument list of following function
 #define MAKE_PTR_ARGUMENT(var) , const fr_t* var
@@ -129,6 +142,99 @@ __device__ fr_t logic_quotient_term(size_t i TOTAL_ARGUMENT)
     return l_s[i] * (c_0 + c_1 + c_2 + c_3 + c_4) * LOGIC_CHALLENGE;
 }
 
+// Extracts the bit value from the accumulated bit.
+__device__ fr_t extract_bit(fr_t curr_acc, fr_t next_acc)
+{
+    return next_acc - curr_acc - curr_acc;
+}
+
+/// Ensures that the bit is either `+1`, `-1`, or `0`
+__device__ fr_t check_bit_consistency(fr_t bit)
+{
+    return bit * (bit - ONE) * (bit + ONE);
+}
+
+__device__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT)
+{
+    fr_t kappa = SQAURE(FIXED_BASE_CHALLENGE);
+    fr_t kappa_sq = SQAURE(kappa);
+    fr_t kappa_cu = kappa_sq * kappa;
+
+    fr_t x_beta_eval = q_l[i];
+    fr_t y_beta_eval = q_r[i];
+
+    fr_t acc_x = w_l[i];
+    fr_t acc_x_next = w_l[i + NEXT];
+    fr_t acc_y = w_r[i];
+    fr_t acc_y_next = w_r[i + NEXT];
+
+    fr_t xy_alpha = w_o[i];
+
+    fr_t accumulated_bit = w_4[i];
+    fr_t accumulated_bit_next = w_4[i + NEXT];
+    fr_t bit = extract_bit(accumulated_bit, accumulated_bit_next);
+
+    // Check bit consistency
+    fr_t bit_consistency = check_bit_consistency(bit);
+
+    fr_t y_alpha = SQAURE(bit) * (y_beta_eval - ONE) + ONE;
+    fr_t x_alpha = x_beta_eval * bit;
+
+    // xy_alpha consistency check
+    fr_t xy_consistency = ((bit * q_c[i]) - xy_alpha) * kappa;
+
+    // x accumulator consistency check
+    fr_t x_3 = acc_x_next;
+    fr_t lhs = x_3 + (x_3 * xy_alpha * acc_x * acc_y * P_COEFF_D);
+    fr_t rhs = (x_alpha * acc_y) + (y_alpha * acc_x);
+    fr_t x_acc_consistency = (lhs - rhs) * kappa_sq;
+
+    // y accumulator consistency check
+    fr_t y_3 = acc_y_next;
+    lhs = y_3 - (y_3 * xy_alpha * acc_x * acc_y * P_COEFF_D);
+    rhs = y_alpha * acc_y - P_COEFF_A * x_alpha * acc_x;
+    fr_t y_acc_consistency = (lhs - rhs) * kappa_cu;
+
+    fr_t checks = bit_consistency
+        + x_acc_consistency
+        + y_acc_consistency
+        + xy_consistency;
+
+    return fbsm_s[i] * checks * FIXED_BASE_CHALLENGE;
+}
+
+__device__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGUMENT)
+{
+    fr_t x_1 = w_l[i];
+    fr_t x_3 = w_l[i + NEXT];
+    fr_t y_1 = w_r[i];
+    fr_t y_3 = w_r[i + NEXT];
+    fr_t x_2 = w_o[i];
+    fr_t y_2 = w_4[i];
+    fr_t x1_y2 = w_4[i + NEXT];
+
+    fr_t kappa = SQAURE(VAR_BASE_CHALLENGE);
+
+    // Check that `x1 * y2` is correct
+    fr_t xy_consistency = x_1 * y_2 - x1_y2;
+
+    fr_t y1_x2 = y_1 * x_2;
+    fr_t y1_y2 = y_1 * y_2;
+    fr_t x1_x2 = x_1 * x_2;
+
+    // Check that `x_3` is correct
+    fr_t x3_lhs = x1_y2 + y1_x2;
+    fr_t x3_rhs = x_3 + (x_3 * P_COEFF_D * x1_y2 * y1_x2);
+    fr_t x3_consistency = (x3_lhs - x3_rhs) * kappa;
+
+    // Check that `y_3` is correct
+    fr_t y3_lhs = y1_y2 - P_COEFF_A * x1_x2;
+    fr_t y3_rhs = y_3 - y_3 * P_COEFF_D * x1_y2 * y1_x2;
+    fr_t y3_consistency = (y3_lhs - y3_rhs) * SQAURE(kappa);
+
+    return vgca_s[i] * (xy_consistency + x3_consistency + y3_consistency) * VAR_BASE_CHALLENGE;
+}
+
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void gate_constraint_sat_kernel(const uint lg_domain_size, fr_t* out
                                 TOTAL_ARGUMENT)
@@ -146,7 +252,10 @@ void gate_constraint_sat_kernel(const uint lg_domain_size, fr_t* out
 
     out[tid] = compute_quotient_i(tid TOTAL_PARAMETER) + 
                 range_quoteint_term(tid TOTAL_PARAMETER) +
-                logic_quotient_term(tid TOTAL_PARAMETER);
+                logic_quotient_term(tid TOTAL_PARAMETER) +
+                fixed_base_quoteint_term(tid TOTAL_PARAMETER) +
+                curve_addition_quotient_term(tid TOTAL_PARAMETER) +
+                pi[tid];
 }
 
 #undef MAX_THREAD_NUM
@@ -160,3 +269,10 @@ void gate_constraint_sat_kernel(const uint lg_domain_size, fr_t* out
 #undef EIGHTY_ONE
 #undef EIGHTY_THREE
 #undef POW_SBOX
+#undef SQAURE
+#undef RANGE_CHALLENGE
+#undef LOGIC_CHALLENGE
+#undef FIXED_BASE_CHALLENGE
+#undef VAR_BASE_CHALLENGE
+#undef P_COEFF_A
+#undef P_COEFF_D

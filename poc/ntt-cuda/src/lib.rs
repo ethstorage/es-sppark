@@ -56,7 +56,11 @@ extern "C" {
           q_m: *const core::ffi::c_void,
           r_s: *const core::ffi::c_void,
           l_s: *const core::ffi::c_void,
+          fbsm_s: *const core::ffi::c_void,
+          vgca_s: *const core::ffi::c_void,
+          pi: *const core::ffi::c_void,
           challenges: *const core::ffi::c_void, 
+          curve_parameters: *const core::ffi::c_void,
     ) -> cuda::Error;
 }
 
@@ -167,14 +171,15 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
     q_l: &[T], q_r: &[T], q_o: &[T], q_4: &[T],
     q_hl: &[T], q_hr: &[T], q_h4: &[T], q_c: &[T],
     q_arith: &[T], q_m: &[T], r_s: &[T], l_s: &[T],
-    challenges: &[T],
+    fbms_s: &[T], vgca_s: &[T], pi: &[T],
+    challenges: &[T], curve_parameters: &[T],
 ) {
 
     // First check whether majority of the vectors have the same length
     // except for w_l w_r and W_4, they are longer than the rest
     let aux = vec![out.len(), w_o.len(),q_l.len(), q_r.len(), q_o.len(),
-        q_4.len(), q_hl.len(), q_hr.len(),
-        q_h4.len(), q_c.len(), q_arith.len(), q_m.len(), r_s.len()];
+        q_4.len(), q_hl.len(), q_hr.len(), q_h4.len(), q_c.len(), q_arith.len(), 
+        q_m.len(), r_s.len(), l_s.len(), fbms_s.len(), vgca_s.len(), pi.len()];
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
         panic!("q series must have the same length, plus out and w_o");
@@ -188,6 +193,9 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
 
     // challenges only have 4 elements
     assert!(challenges.len() == 4);
+
+    // curve_parameters only have 2 elements
+    assert!(curve_parameters.len() == 2);
 
     // Third check the length of the input vectors, should be power of 2
     if (len & (len - 1)) != 0 {
@@ -216,7 +224,11 @@ pub fn gate_constraint_sat<T>(device_id: usize, out: &mut [T],
             q_m.as_ptr() as *const core::ffi::c_void,
             r_s.as_ptr() as *const core::ffi::c_void,
             l_s.as_ptr() as *const core::ffi::c_void,
+            fbms_s.as_ptr() as *const core::ffi::c_void,
+            vgca_s.as_ptr() as *const core::ffi::c_void,
+            pi.as_ptr() as *const core::ffi::c_void,
             challenges.as_ptr() as *const core::ffi::c_void,
+            curve_parameters.as_ptr() as *const core::ffi::c_void,
         )
     };
 
