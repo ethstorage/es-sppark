@@ -51,12 +51,19 @@
     X(sigma_r)          \
     X(sigma_o)          \
     X(sigma_4)          \
+    X(q_lookup)         \
+    X(table)            \
+    X(f)                \
+    X(h1)               \
+    X(h2)               \
+    X(z2)               \
+    X(l1)               \
     X(l1_alpha_sq)  
 
 
 // Auxilary list
-// Challenges has 4 elements, curve_params has 2 elements
-// Permutation parameters has 3 elements
+// Challenges has 5 elements, curve_params has 2 elements
+// Permutation parameters has 6 elements
 #define AUX_LIST(X) \
     X(challenges)   \
     X(curve_params) \
@@ -66,6 +73,7 @@
 #define LOGIC_CHALLENGE challenges[1]
 #define FIXED_BASE_CHALLENGE challenges[2]
 #define VAR_BASE_CHALLENGE challenges[3]
+#define LOOKUP_CHALLENGE challenges[4]
 
 #define P_COEFF_A curve_params[0]
 #define P_COEFF_D curve_params[1]
@@ -73,6 +81,9 @@
 #define ALPHA perm_params[0]
 #define BETA perm_params[1]
 #define GAMMA perm_params[2]
+#define DELTA perm_params[3]
+#define EPSILON perm_params[4]
+#define ZETA perm_params[5]
 
 // Compose a argument list of following function
 #define MAKE_PTR_ARGUMENT(var) , const fr_t* var
@@ -302,6 +313,48 @@ __device__ __forceinline__ fr_t permutation_term(size_t i, size_t domain_size TO
            + compute_quotient_term_check_one_i(i, domain_size TOTAL_PARAMETER);
 }
 
+/*---------------------------------------LOOKUP-------------------------------------------------*/
+// Linear combination of a series of values
+__device__ __forceinline__ fr_t lc(const fr_t* coeffs, fr_t x, size_t n)
+{
+    // Horner's method
+    fr_t acc = coeffs[n];
+    for (size_t i = 1; i < n; ++i) {
+        acc = acc * x + coeffs[n - i];
+    }
+    return acc;
+}
+
+__device__ __forceinline__ fr_t lookup_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
+{
+   
+    fr_t lookup_sep_sq = SQAURE(LOOKUP_CHALLENGE);
+    fr_t lookup_sep_cu = lookup_sep_sq * LOOKUP_CHALLENGE;
+    fr_t one_plus_delta = DELTA + ONE;
+    fr_t epsilon_one_plus_delta = EPSILON * one_plus_delta;
+
+    // q_lookup(X) * (a(X) + zeta * b(X) + (zeta^2 * c(X)) + (zeta^3 * d(X)
+    // - f(X))) * α_1
+    fr_t wit[4] = {w_l[i], w_r[i], w_o[i], w_4[i]};
+    fr_t compressed_tuple = lc(wit, ZETA, 4);
+    fr_t a = q_lookup[i] * (compressed_tuple - f[i]) * LOOKUP_CHALLENGE;
+
+    // z2(X) * (1+δ) * (ε+f(X)) * (ε*(1+δ) + t(X) + δt(Xω)) * lookup_sep^2
+    fr_t b_0 = EPSILON + f[i];
+    fr_t b_1 = epsilon_one_plus_delta + table[i] + DELTA * table[NEXT(i, domain_size)];
+    fr_t b = z2[i] * one_plus_delta * b_0 * b_1 * lookup_sep_sq;
+
+    // − z2(Xω) * (ε*(1+δ) + h1(X) + δ*h2(X)) * (ε*(1+δ) + h2(X) + δ*h1(Xω))
+    // * lookup_sep^2
+    fr_t c_0 = epsilon_one_plus_delta + h1[i] + DELTA * h2[i];
+    fr_t c_1 = epsilon_one_plus_delta + h2[i] + DELTA * h1[NEXT(i, domain_size)];
+    fr_t c = z2[NEXT(i, domain_size)] * c_0 * c_1 * lookup_sep_sq;
+
+    fr_t d = (z2[i] - ONE) * l1[i] * lookup_sep_cu;
+
+    return a + b - c + d;
+}
+
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
@@ -319,7 +372,8 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
     }
 
     out[tid] =   gate_sat_term(tid, domain_size TOTAL_PARAMETER)
-               + permutation_term(tid, domain_size TOTAL_PARAMETER);
+               + permutation_term(tid, domain_size TOTAL_PARAMETER)
+               + lookup_term(tid, domain_size TOTAL_PARAMETER);
     
 }
 
@@ -342,8 +396,12 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
 #undef LOGIC_CHALLENGE
 #undef FIXED_BASE_CHALLENGE
 #undef VAR_BASE_CHALLENGE
+#undef LOOKUP_CHALLENGE
 #undef P_COEFF_A
 #undef P_COEFF_D
 #undef ALPHA
 #undef BETA
 #undef GAMMA
+#undef DELTA
+#undef EPSILON
+#undef ZETA

@@ -40,19 +40,19 @@ public:
             POINTER_LIST(MAKE_DEV_PTR);
             POINTER_LIST(MAKE_HOST2DEVICE);
 
-            // We only have 4 challenges
+            // We only have 5 challenges
             // Because it is associated with Macro, if you want to change it name
             // change the macro as well
-            dev_ptr_t<fr_t> d_challenges{4, gpu};
-            gpu.HtoD(&d_challenges[0], challenges, 4);
+            dev_ptr_t<fr_t> d_challenges{5, gpu};
+            gpu.HtoD(&d_challenges[0], challenges, 5);
 
             // We have two curve parameters
             dev_ptr_t<fr_t> d_curve_params{2, gpu};
             gpu.HtoD(&d_curve_params[0], curve_params, 2);
 
-            // Three permutation parameters
-            dev_ptr_t<fr_t> d_perm_params{3, gpu};
-            gpu.HtoD(&d_perm_params[0], perm_params, 3);
+            // 6 permutation parameters
+            dev_ptr_t<fr_t> d_perm_params{6, gpu};
+            gpu.HtoD(&d_perm_params[0], perm_params, 6);
 
             dev_ptr_t<fr_t> d_out{domain_size, gpu};
 

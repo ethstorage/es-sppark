@@ -37,38 +37,45 @@ extern "C" {
 
 extern "C" {
     fn compute_quotient_term(
-          device_id: usize,
-          lg_domain_size: u32,
-          out: *mut core::ffi::c_void,
-          w_l: *const core::ffi::c_void,
-          w_r: *const core::ffi::c_void,
-          w_o: *const core::ffi::c_void,
-          w_4: *const core::ffi::c_void,
-          q_l: *const core::ffi::c_void,
-          q_r: *const core::ffi::c_void,
-          q_o: *const core::ffi::c_void,
-          q_4: *const core::ffi::c_void,
-          q_hl: *const core::ffi::c_void,
-          q_hr: *const core::ffi::c_void,
-          q_h4: *const core::ffi::c_void,
-          q_c: *const core::ffi::c_void,
-          q_arith: *const core::ffi::c_void,
-          q_m: *const core::ffi::c_void,
-          r_s: *const core::ffi::c_void,
-          l_s: *const core::ffi::c_void,
-          fbsm_s: *const core::ffi::c_void,
-          vgca_s: *const core::ffi::c_void,
-          pi: *const core::ffi::c_void,
-          z: *const core::ffi::c_void,
-          perm_linear: *const core::ffi::c_void,
-          sigma_l: *const core::ffi::c_void,
-          sigma_r: *const core::ffi::c_void,
-          sigma_o: *const core::ffi::c_void,
-          sigma_4: *const core::ffi::c_void,
-          l1_alpha_sq: *const core::ffi::c_void,
-          challenges: *const core::ffi::c_void, 
-          curve_params: *const core::ffi::c_void,
-          perm_params: *const core::ffi::c_void,
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        w_l: *const core::ffi::c_void,
+        w_r: *const core::ffi::c_void,
+        w_o: *const core::ffi::c_void,
+        w_4: *const core::ffi::c_void,
+        q_l: *const core::ffi::c_void,
+        q_r: *const core::ffi::c_void,
+        q_o: *const core::ffi::c_void,
+        q_4: *const core::ffi::c_void,
+        q_hl: *const core::ffi::c_void,
+        q_hr: *const core::ffi::c_void,
+        q_h4: *const core::ffi::c_void,
+        q_c: *const core::ffi::c_void,
+        q_arith: *const core::ffi::c_void,
+        q_m: *const core::ffi::c_void,
+        r_s: *const core::ffi::c_void,
+        l_s: *const core::ffi::c_void,
+        fbsm_s: *const core::ffi::c_void,
+        vgca_s: *const core::ffi::c_void,
+        pi: *const core::ffi::c_void,
+        z: *const core::ffi::c_void,
+        perm_linear: *const core::ffi::c_void,
+        sigma_l: *const core::ffi::c_void,
+        sigma_r: *const core::ffi::c_void,
+        sigma_o: *const core::ffi::c_void,
+        sigma_4: *const core::ffi::c_void,
+        q_lookup: *const core::ffi::c_void,
+        table: *const core::ffi::c_void,
+        f: *const core::ffi::c_void,
+        h1: *const core::ffi::c_void,
+        h2: *const core::ffi::c_void,
+        z2: *const core::ffi::c_void,
+        l1: *const core::ffi::c_void,
+        l1_alpha_sq: *const core::ffi::c_void,
+        challenges: *const core::ffi::c_void,
+        curve_params: *const core::ffi::c_void,
+        perm_params: *const core::ffi::c_void,
     ) -> cuda::Error;
 }
 
@@ -174,43 +181,106 @@ pub fn coset_iNTT<T>(
     }
 }
 
-pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
-    w_l: &[T], w_r: &[T], w_o: &[T], w_4: &[T],
-    q_l: &[T], q_r: &[T], q_o: &[T], q_4: &[T],
-    q_hl: &[T], q_hr: &[T], q_h4: &[T], q_c: &[T],
-    q_arith: &[T], q_m: &[T], r_s: &[T], l_s: &[T],
-    fbms_s: &[T], vgca_s: &[T], pi: &[T], z: &[T],
-    perm_linear: &[T], sigma_l: &[T], sigma_r: &[T],
-    sigma_o: &[T], sigma_4: &[T], l1_alpha_sq: &[T],
-    challenges: &[T], curve_parameters: &[T], perm_parameters: &[T],
+pub fn quotient_term_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    w_l: &[T],
+    w_r: &[T],
+    w_o: &[T],
+    w_4: &[T],
+    q_l: &[T],
+    q_r: &[T],
+    q_o: &[T],
+    q_4: &[T],
+    q_hl: &[T],
+    q_hr: &[T],
+    q_h4: &[T],
+    q_c: &[T],
+    q_arith: &[T],
+    q_m: &[T],
+    r_s: &[T],
+    l_s: &[T],
+    fbms_s: &[T],
+    vgca_s: &[T],
+    pi: &[T],
+    z: &[T],
+    perm_linear: &[T],
+    sigma_l: &[T],
+    sigma_r: &[T],
+    sigma_o: &[T],
+    sigma_4: &[T],
+    q_lookup: &[T],
+    table: &[T],
+    f: &[T],
+    h1: &[T],
+    h2: &[T],
+    z2: &[T],
+    l1: &[T],
+    l1_alpha_sq: &[T],
+    challenges: &[T],
+    curve_parameters: &[T],
+    perm_parameters: &[T],
 ) {
-
     // First check whether majority of the vectors have the same length
     // except for w_l w_r and W_4, they are longer than the rest
-    let aux = vec![out.len(), w_o.len(),q_l.len(), q_r.len(), q_o.len(),
-        q_4.len(), q_hl.len(), q_hr.len(), q_h4.len(), q_c.len(), q_arith.len(), 
-        q_m.len(), r_s.len(), l_s.len(), fbms_s.len(), vgca_s.len(), pi.len(),
-        perm_linear.len(), sigma_l.len(), sigma_r.len(), sigma_o.len()];
+    let aux = vec![
+        out.len(),
+        w_o.len(),
+        q_l.len(),
+        q_r.len(),
+        q_o.len(),
+        q_4.len(),
+        q_hl.len(),
+        q_hr.len(),
+        q_h4.len(),
+        q_c.len(),
+        q_arith.len(),
+        q_m.len(),
+        r_s.len(),
+        l_s.len(),
+        fbms_s.len(),
+        vgca_s.len(),
+        pi.len(),
+        perm_linear.len(),
+        sigma_l.len(),
+        sigma_r.len(),
+        sigma_o.len(),
+        sigma_4.len(),
+        q_lookup.len(),
+        f.len(),
+        h2.len(),
+        l1.len(),
+        l1_alpha_sq.len(),
+    ];
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
-        panic!("q series must have the same length, plus out and w_o");
+        panic!("8n series must have the same length ");
     }
     let len = aux[0];
-    
-    // Second check w series, they should be 8 elements longer than the q series
-    assert!(w_l.len() == w_r.len());
-    assert!(w_r.len() == w_4.len());
-    assert!(w_4.len() == z.len());
-    assert!(w_4.len() == len + 8);
 
-    // challenges only have 4 elements
-    assert!(challenges.len() == 4);
+    // Second check w series, they should be 8 elements longer than the q series
+    let aux2 = vec![
+        w_l.len(),
+        w_r.len(),
+        w_4.len(),
+        z.len(),
+        z2.len(),
+        h1.len(),
+        table.len(),
+    ];
+    let all_same_length = aux2.iter().all(|v| *v == (len + 8));
+    if !all_same_length {
+        panic!("8n+8 series must have the same length ");
+    }
+
+    // challenges only have 5 elements
+    assert!(challenges.len() == 5);
 
     // curve_parameters only have 2 elements
     assert!(curve_parameters.len() == 2);
 
-    // permutation parameters have 3 elements
-    assert!(perm_parameters.len() == 3);
+    // permutation parameters have 6 elements
+    assert!(perm_parameters.len() == 6);
 
     // Third check the length of the input vectors, should be power of 2
     if (len & (len - 1)) != 0 {
@@ -248,6 +318,13 @@ pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
             sigma_r.as_ptr() as *const core::ffi::c_void,
             sigma_o.as_ptr() as *const core::ffi::c_void,
             sigma_4.as_ptr() as *const core::ffi::c_void,
+            q_lookup.as_ptr() as *const core::ffi::c_void,
+            table.as_ptr() as *const core::ffi::c_void,
+            f.as_ptr() as *const core::ffi::c_void,
+            h1.as_ptr() as *const core::ffi::c_void,
+            h2.as_ptr() as *const core::ffi::c_void,
+            z2.as_ptr() as *const core::ffi::c_void,
+            l1.as_ptr() as *const core::ffi::c_void,
             l1_alpha_sq.as_ptr() as *const core::ffi::c_void,
             challenges.as_ptr() as *const core::ffi::c_void,
             curve_parameters.as_ptr() as *const core::ffi::c_void,

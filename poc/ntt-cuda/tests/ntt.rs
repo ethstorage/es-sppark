@@ -6,22 +6,27 @@ use ntt_cuda::NTTInputOutputOrder;
 
 const DEFAULT_GPU: usize = 0;
 
-#[cfg(any(feature = "bls12_377", feature = "bls12_381", feature = "pallas", feature = "vesta"))]
+#[cfg(any(
+    feature = "bls12_377",
+    feature = "bls12_381",
+    feature = "pallas",
+    feature = "vesta"
+))]
 #[test]
 fn test_against_arkworks() {
     #[cfg(feature = "bls12_377")]
     use ark_bls12_377::Fr;
     #[cfg(feature = "bls12_381")]
     use ark_bls12_381::Fr;
+    use ark_ff::{PrimeField, UniformRand};
     #[cfg(feature = "pallas")]
     use ark_pallas::Fr;
-    #[cfg(feature = "vesta")]
-    use ark_vesta::Fr;
-    use ark_ff::{PrimeField, UniformRand};
     use ark_poly::{
         domain::DomainCoeff, EvaluationDomain, GeneralEvaluationDomain,
     };
     use ark_std::test_rng;
+    #[cfg(feature = "vesta")]
+    use ark_vesta::Fr;
 
     fn test_ntt<
         F: PrimeField,
@@ -57,16 +62,24 @@ fn test_against_arkworks() {
             assert!(vtest == v);
 
             domain.coset_fft_in_place(&mut v);
-            ntt_cuda::coset_NTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NN);
+            ntt_cuda::coset_NTT(
+                DEFAULT_GPU,
+                &mut vtest,
+                NTTInputOutputOrder::NN,
+            );
             assert!(vtest == v);
 
             domain.coset_ifft_in_place(&mut v);
-            ntt_cuda::coset_iNTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NN);
+            ntt_cuda::coset_iNTT(
+                DEFAULT_GPU,
+                &mut vtest,
+                NTTInputOutputOrder::NN,
+            );
             assert!(vtest == v);
         }
     }
 
-    /* Mute this unused test  */
+    /* Mute this unused test */
     /*
     fn test_arith<
         F: PrimeField,
@@ -114,5 +127,4 @@ fn test_against_arkworks() {
 
     test_ntt::<Fr, Fr, _, GeneralEvaluationDomain<Fr>>(rng);
     //test_arith::<Fr, Fr, _, GeneralEvaluationDomain<Fr>>(rng);
-
 }
