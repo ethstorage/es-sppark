@@ -50,6 +50,10 @@ public:
             dev_ptr_t<fr_t> d_curve_params{2, gpu};
             gpu.HtoD(&d_curve_params[0], curve_params, 2);
 
+            // Three permutation parameters
+            dev_ptr_t<fr_t> d_perm_params{3, gpu};
+            gpu.HtoD(&d_perm_params[0], perm_params, 3);
+
             dev_ptr_t<fr_t> d_out{domain_size, gpu};
 
             // First check if it could be stored inside one block

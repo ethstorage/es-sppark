@@ -59,8 +59,16 @@ extern "C" {
           fbsm_s: *const core::ffi::c_void,
           vgca_s: *const core::ffi::c_void,
           pi: *const core::ffi::c_void,
+          z: *const core::ffi::c_void,
+          perm_linear: *const core::ffi::c_void,
+          sigma_l: *const core::ffi::c_void,
+          sigma_r: *const core::ffi::c_void,
+          sigma_o: *const core::ffi::c_void,
+          sigma_4: *const core::ffi::c_void,
+          l1_alpha_sq: *const core::ffi::c_void,
           challenges: *const core::ffi::c_void, 
-          curve_parameters: *const core::ffi::c_void,
+          curve_params: *const core::ffi::c_void,
+          perm_params: *const core::ffi::c_void,
     ) -> cuda::Error;
 }
 
@@ -171,15 +179,18 @@ pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
     q_l: &[T], q_r: &[T], q_o: &[T], q_4: &[T],
     q_hl: &[T], q_hr: &[T], q_h4: &[T], q_c: &[T],
     q_arith: &[T], q_m: &[T], r_s: &[T], l_s: &[T],
-    fbms_s: &[T], vgca_s: &[T], pi: &[T],
-    challenges: &[T], curve_parameters: &[T],
+    fbms_s: &[T], vgca_s: &[T], pi: &[T], z: &[T],
+    perm_linear: &[T], sigma_l: &[T], sigma_r: &[T],
+    sigma_o: &[T], sigma_4: &[T], l1_alpha_sq: &[T],
+    challenges: &[T], curve_parameters: &[T], perm_parameters: &[T],
 ) {
 
     // First check whether majority of the vectors have the same length
     // except for w_l w_r and W_4, they are longer than the rest
     let aux = vec![out.len(), w_o.len(),q_l.len(), q_r.len(), q_o.len(),
         q_4.len(), q_hl.len(), q_hr.len(), q_h4.len(), q_c.len(), q_arith.len(), 
-        q_m.len(), r_s.len(), l_s.len(), fbms_s.len(), vgca_s.len(), pi.len()];
+        q_m.len(), r_s.len(), l_s.len(), fbms_s.len(), vgca_s.len(), pi.len(),
+        perm_linear.len(), sigma_l.len(), sigma_r.len(), sigma_o.len()];
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
         panic!("q series must have the same length, plus out and w_o");
@@ -189,6 +200,7 @@ pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
     // Second check w series, they should be 8 elements longer than the q series
     assert!(w_l.len() == w_r.len());
     assert!(w_r.len() == w_4.len());
+    assert!(w_4.len() == z.len());
     assert!(w_4.len() == len + 8);
 
     // challenges only have 4 elements
@@ -196,6 +208,9 @@ pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
 
     // curve_parameters only have 2 elements
     assert!(curve_parameters.len() == 2);
+
+    // permutation parameters have 3 elements
+    assert!(perm_parameters.len() == 3);
 
     // Third check the length of the input vectors, should be power of 2
     if (len & (len - 1)) != 0 {
@@ -227,8 +242,16 @@ pub fn quotient_term_gpu<T>(device_id: usize, out: &mut [T],
             fbms_s.as_ptr() as *const core::ffi::c_void,
             vgca_s.as_ptr() as *const core::ffi::c_void,
             pi.as_ptr() as *const core::ffi::c_void,
+            z.as_ptr() as *const core::ffi::c_void,
+            perm_linear.as_ptr() as *const core::ffi::c_void,
+            sigma_l.as_ptr() as *const core::ffi::c_void,
+            sigma_r.as_ptr() as *const core::ffi::c_void,
+            sigma_o.as_ptr() as *const core::ffi::c_void,
+            sigma_4.as_ptr() as *const core::ffi::c_void,
+            l1_alpha_sq.as_ptr() as *const core::ffi::c_void,
             challenges.as_ptr() as *const core::ffi::c_void,
             curve_parameters.as_ptr() as *const core::ffi::c_void,
+            perm_parameters.as_ptr() as *const core::ffi::c_void,
         )
     };
 

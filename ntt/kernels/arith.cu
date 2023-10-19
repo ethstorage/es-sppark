@@ -4,7 +4,8 @@
 
 // Some constant macro only be used in this file
 #define MAX_THREAD_NUM 1024
-#define NEXT 8 // 8 is the row of gate constraint, because we extend the domain by 8
+// 8 is the row of gate constraint, because we extend the domain by 8
+#define NEXT(index, domain_size) ((index + 8) % domain_size)
 #define ONE fr_t::one()
 #define TWO (fr_t::one() + fr_t::one())
 #define THREE (fr_t::one() + fr_t::one() + fr_t::one())
@@ -87,7 +88,7 @@
     POINTER_LIST(MAKE_PARAMETER) AUX_LIST(MAKE_PARAMETER)
 
 /*-------------------------GATE SAT---------------------------------------*/
-__device__ __forceinline__ fr_t compute_quotient_i(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t compute_quotient_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     return ((w_l[i] * w_r[i] * q_m[i])
             + (w_l[i] * q_l[i])
@@ -109,7 +110,7 @@ __device__ __forceinline__ fr_t delta(fr_t f)
     return f * f_1 * f_2 * f_3; 
 }
 
-__device__ __forceinline__ fr_t range_quoteint_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t range_quoteint_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
    fr_t kappa = RANGE_CHALLENGE * RANGE_CHALLENGE;
    fr_t kappa_sq = kappa * kappa;
@@ -118,7 +119,7 @@ __device__ __forceinline__ fr_t range_quoteint_term(size_t i TOTAL_ARGUMENT)
    fr_t b2 = delta(w_r[i] - FOUR * w_o[i]) * kappa;
    fr_t b3 = delta(w_l[i] - FOUR * w_r[i]) * kappa_sq;
    // NOTICE: w_4 is next one, should add next line
-   fr_t b4 = delta(w_4[i + NEXT] - FOUR * w_l[i]) * kappa_cu;
+   fr_t b4 = delta(w_4[NEXT(i, domain_size)] - FOUR * w_l[i]) * kappa_cu;
 
    return r_s[i] * (b1 + b2 + b3 + b4) * RANGE_CHALLENGE;
 }
@@ -135,20 +136,20 @@ __device__ __forceinline__ fr_t delta_xor_and(fr_t a, fr_t b, fr_t w, fr_t c, fr
     return E + B;
 }
 
-__device__ __forceinline__ fr_t logic_quotient_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t logic_quotient_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     fr_t kappa = RANGE_CHALLENGE * RANGE_CHALLENGE;
     fr_t kappa_sq = kappa * kappa;
     fr_t kappa_cu = kappa_sq * kappa;
     fr_t kappa_qu = kappa_cu * kappa;
 
-    fr_t a = w_l[i + NEXT] - FOUR * w_l[i];
+    fr_t a = w_l[NEXT(i, domain_size)] - FOUR * w_l[i];
     fr_t c_0 = delta(a);
 
-    fr_t b = w_r[i + NEXT] - FOUR * w_r[i];
+    fr_t b = w_r[NEXT(i, domain_size)] - FOUR * w_r[i];
     fr_t c_1 = delta(b) * kappa;
 
-    fr_t d = w_4[i + NEXT] - FOUR * w_4[i];
+    fr_t d = w_4[NEXT(i, domain_size)] - FOUR * w_4[i];
     fr_t c_2 = delta(d) * kappa_sq;
 
     fr_t w = w_o[i];
@@ -171,7 +172,7 @@ __device__ __forceinline__ fr_t check_bit_consistency(fr_t bit)
     return bit * (bit - ONE) * (bit + ONE);
 }
 
-__device__ __forceinline__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t fixed_base_quoteint_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     fr_t kappa = SQAURE(FIXED_BASE_CHALLENGE);
     fr_t kappa_sq = SQAURE(kappa);
@@ -181,14 +182,14 @@ __device__ __forceinline__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT
     fr_t y_beta_eval = q_r[i];
 
     fr_t acc_x = w_l[i];
-    fr_t acc_x_next = w_l[i + NEXT];
+    fr_t acc_x_next = w_l[NEXT(i, domain_size)];
     fr_t acc_y = w_r[i];
-    fr_t acc_y_next = w_r[i + NEXT];
+    fr_t acc_y_next = w_r[NEXT(i, domain_size)];
 
     fr_t xy_alpha = w_o[i];
 
     fr_t accumulated_bit = w_4[i];
-    fr_t accumulated_bit_next = w_4[i + NEXT];
+    fr_t accumulated_bit_next = w_4[NEXT(i, domain_size)];
     fr_t bit = extract_bit(accumulated_bit, accumulated_bit_next);
 
     // Check bit consistency
@@ -220,15 +221,15 @@ __device__ __forceinline__ fr_t fixed_base_quoteint_term(size_t i TOTAL_ARGUMENT
     return fbsm_s[i] * checks * FIXED_BASE_CHALLENGE;
 }
 
-__device__ __forceinline__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t curve_addition_quotient_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     fr_t x_1 = w_l[i];
-    fr_t x_3 = w_l[i + NEXT];
+    fr_t x_3 = w_l[NEXT(i, domain_size)];
     fr_t y_1 = w_r[i];
-    fr_t y_3 = w_r[i + NEXT];
+    fr_t y_3 = w_r[NEXT(i, domain_size)];
     fr_t x_2 = w_o[i];
     fr_t y_2 = w_4[i];
-    fr_t x1_y2 = w_4[i + NEXT];
+    fr_t x1_y2 = w_4[NEXT(i, domain_size)];
 
     fr_t kappa = SQAURE(VAR_BASE_CHALLENGE);
 
@@ -252,18 +253,18 @@ __device__ __forceinline__ fr_t curve_addition_quotient_term(size_t i TOTAL_ARGU
     return vgca_s[i] * (xy_consistency + x3_consistency + y3_consistency) * VAR_BASE_CHALLENGE;
 }
 
-__device__ __forceinline__ fr_t gate_sat_term(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t gate_sat_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
-    return compute_quotient_i(i TOTAL_PARAMETER) + 
-                range_quoteint_term(i TOTAL_PARAMETER) +
-                logic_quotient_term(i TOTAL_PARAMETER) +
-                fixed_base_quoteint_term(i TOTAL_PARAMETER) +
-                curve_addition_quotient_term(i TOTAL_PARAMETER) +
+    return compute_quotient_i(i, domain_size TOTAL_PARAMETER) + 
+                range_quoteint_term(i, domain_size TOTAL_PARAMETER) +
+                logic_quotient_term(i, domain_size TOTAL_PARAMETER) +
+                fixed_base_quoteint_term(i, domain_size TOTAL_PARAMETER) +
+                curve_addition_quotient_term(i, domain_size TOTAL_PARAMETER) +
                 pi[i];
 }
 
 /*--------------------------------------PERMUTATION--------------------------------------------*/
-__device__ __forceinline__ fr_t compute_quotient_identity_range_check_i(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t compute_quotient_identity_range_check_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     fr_t x = perm_linear[i];
     return (w_l[i] + BETA * x + GAMMA)
@@ -274,7 +275,7 @@ __device__ __forceinline__ fr_t compute_quotient_identity_range_check_i(size_t i
         * ALPHA;
 }
 
-__device__ __forceinline__ fr_t compute_quotient_copy_range_check_i(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t compute_quotient_copy_range_check_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     fr_t left_sigma_eval = sigma_l[i];
     fr_t right_sigma_eval = sigma_r[i];
@@ -284,21 +285,21 @@ __device__ __forceinline__ fr_t compute_quotient_copy_range_check_i(size_t i TOT
         * (w_r[i] + (BETA * right_sigma_eval) + GAMMA)
         * (w_o[i] + (BETA * out_sigma_eval) + GAMMA)
         * (w_4[i] + (BETA * fourth_sigma_eval) + GAMMA)
-        * z[i + NEXT]
+        * z[NEXT(i, domain_size)]
         * ALPHA;
-    return -product;
+    return product; 
 }
 
-__device__ __forceinline__ fr_t compute_quotient_term_check_one_i(size_t i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t compute_quotient_term_check_one_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
     return (z[i] - ONE) * l1_alpha_sq[i];
 }
 
-__device__ __forceinline__ fr_t permutation_term(size i TOTAL_ARGUMENT)
+__device__ __forceinline__ fr_t permutation_term(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
-    return compute_quotient_identity_range_check_i(i TOTAL_PARAMETER) +
-                compute_quotient_copy_range_check_i(i TOTAL_PARAMETER) +
-                compute_quotient_term_check_one_i(i TOTAL_PARAMETER);
+    return compute_quotient_identity_range_check_i(i, domain_size TOTAL_PARAMETER)
+           - compute_quotient_copy_range_check_i(i, domain_size TOTAL_PARAMETER)
+           + compute_quotient_term_check_one_i(i, domain_size TOTAL_PARAMETER);
 }
 
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
@@ -317,8 +318,9 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
         return;
     }
 
-    out[tid] = gate_sat_term(tid TOTAL_PARAMETER)
-               + permutation_term(tid TOTAL_PARAMETER);
+    out[tid] =   gate_sat_term(tid, domain_size TOTAL_PARAMETER)
+               + permutation_term(tid, domain_size TOTAL_PARAMETER);
+    
 }
 
 #undef MAX_THREAD_NUM
