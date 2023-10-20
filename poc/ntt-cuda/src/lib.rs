@@ -73,6 +73,7 @@ extern "C" {
         z2: *const core::ffi::c_void,
         l1: *const core::ffi::c_void,
         l1_alpha_sq: *const core::ffi::c_void,
+        v_h_coset: *const core::ffi::c_void,
         challenges: *const core::ffi::c_void,
         curve_params: *const core::ffi::c_void,
         perm_params: *const core::ffi::c_void,
@@ -217,6 +218,7 @@ pub fn quotient_term_gpu<T>(
     z2: &[T],
     l1: &[T],
     l1_alpha_sq: &[T],
+    v_h_coset: &[T],
     challenges: &[T],
     curve_parameters: &[T],
     perm_parameters: &[T],
@@ -224,6 +226,13 @@ pub fn quotient_term_gpu<T>(
     // First check whether majority of the vectors have the same length
     // except for w_l w_r and W_4, they are longer than the rest
     let aux = vec![
+        w_l.len(),
+        w_r.len(),
+        w_4.len(),
+        z.len(),
+        z2.len(),
+        h1.len(),
+        table.len(),
         out.len(),
         w_o.len(),
         q_l.len(),
@@ -251,27 +260,13 @@ pub fn quotient_term_gpu<T>(
         h2.len(),
         l1.len(),
         l1_alpha_sq.len(),
+        v_h_coset.len(),
     ];
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
-        panic!("8n series must have the same length ");
+        panic!(" input series must have the same length ");
     }
     let len = aux[0];
-
-    // Second check w series, they should be 8 elements longer than the q series
-    let aux2 = vec![
-        w_l.len(),
-        w_r.len(),
-        w_4.len(),
-        z.len(),
-        z2.len(),
-        h1.len(),
-        table.len(),
-    ];
-    let all_same_length = aux2.iter().all(|v| *v == (len + 8));
-    if !all_same_length {
-        panic!("8n+8 series must have the same length ");
-    }
 
     // challenges only have 5 elements
     assert!(challenges.len() == 5);
@@ -326,6 +321,7 @@ pub fn quotient_term_gpu<T>(
             z2.as_ptr() as *const core::ffi::c_void,
             l1.as_ptr() as *const core::ffi::c_void,
             l1_alpha_sq.as_ptr() as *const core::ffi::c_void,
+            v_h_coset.as_ptr() as *const core::ffi::c_void,
             challenges.as_ptr() as *const core::ffi::c_void,
             curve_parameters.as_ptr() as *const core::ffi::c_void,
             perm_parameters.as_ptr() as *const core::ffi::c_void,

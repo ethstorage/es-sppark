@@ -58,7 +58,8 @@
     X(h2)               \
     X(z2)               \
     X(l1)               \
-    X(l1_alpha_sq)  
+    X(l1_alpha_sq)      \
+    X(v_h_coset) 
 
 
 // Auxilary list
@@ -371,9 +372,10 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
         return;
     }
 
-    out[tid] =   gate_sat_term(tid, domain_size TOTAL_PARAMETER)
-               + permutation_term(tid, domain_size TOTAL_PARAMETER)
-               + lookup_term(tid, domain_size TOTAL_PARAMETER);
+    fr_t numerator =   gate_sat_term(tid, domain_size TOTAL_PARAMETER)
+                     + permutation_term(tid, domain_size TOTAL_PARAMETER)
+                     + lookup_term(tid, domain_size TOTAL_PARAMETER);
+    out[tid] = numerator / v_h_coset[tid];
     
 }
 
