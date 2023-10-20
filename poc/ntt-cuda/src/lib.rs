@@ -224,7 +224,6 @@ pub fn quotient_term_gpu<T>(
     perm_parameters: &[T],
 ) {
     // First check whether majority of the vectors have the same length
-    // except for w_l w_r and W_4, they are longer than the rest
     let aux = vec![
         w_l.len(),
         w_r.len(),
