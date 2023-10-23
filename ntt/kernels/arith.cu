@@ -99,6 +99,28 @@
 #define TOTAL_PARAMETER \
     POINTER_LIST(MAKE_PARAMETER) AUX_LIST(MAKE_PARAMETER)
 
+#define PRODUCT_POINTER_LIST(X) \
+    X(root) \
+    X(gate_sigma0) \
+    X(gate_sigma1) \
+    X(gate_sigma2) \
+    X(gate_sigma3) \
+    X(gate_wire0) \
+    X(gate_wire1) \
+    X(gate_wire2) \
+    X(gate_wire3) \
+
+#define PRODUCT_AUX_LIST(X) \
+    X(ks) \
+    X(beta) \
+    X(gamma) \
+
+#define PRODUCT_ARGUMENT \
+    PRODUCT_POINTER_LIST(MAKE_PTR_ARGUMENT) PRODUCT_AUX_LIST(MAKE_PTR_ARGUMENT)
+
+#define PRODUCT_PARAMETER \
+    PRODUCT_POINTER_LIST(MAKE_PARAMETER) PRODUCT_AUX_LIST(MAKE_PARAMETER)
+
 /*-------------------------GATE SAT---------------------------------------*/
 __device__ __forceinline__ fr_t compute_quotient_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
@@ -356,6 +378,21 @@ __device__ __forceinline__ fr_t lookup_term(size_t i, size_t domain_size TOTAL_A
     return a + b - c + d;
 }
 
+/*--------------------------------------PRODUCT ARGUMENT--------------------------------------------*/
+__device__ __forceinline__ fr_t product_argment(size_t i, size_t domain_size PRODUCT_ARGUMENT) {
+    fr_t _beta = beta[0];
+    fr_t _gamma = gamma[0];
+    fr_t numerator_product = (gate_wire0[i] + _beta * ks[0] * root[i] + _gamma)
+        * (gate_wire1[i] + _beta * ks[1] * root[i] + _gamma) 
+        * (gate_wire2[i] + _beta * ks[2] * root[i] + _gamma)
+        * (gate_wire3[i] + _beta * ks[3] * root[i] + _gamma); 
+    fr_t denominator_product = (gate_wire0[i] + _beta * gate_sigma0[i] + _gamma)
+        * (gate_wire1[i] + _beta * gate_sigma1[i] + _gamma)
+        * (gate_wire2[i] + _beta * gate_sigma2[i] + _gamma)
+        * (gate_wire3[i] + _beta * gate_sigma3[i] + _gamma);
+    return numerator_product / denominator_product;
+}
+
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
@@ -377,6 +414,24 @@ void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
                      + lookup_term(tid, domain_size TOTAL_PARAMETER);
     out[tid] = numerator / v_h_coset[tid];
     
+}
+
+__launch_bounds__(MAX_THREAD_NUM, 1) __global__
+void product_argment_kernel(const uint lg_domain_size, fr_t* out
+                                PRODUCT_ARGUMENT)
+{
+#if (__CUDACC_VER_MAJOR__-0) >= 11
+    __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
+#endif
+    uint domain_size = 1 << lg_domain_size;
+    const index_t tid = threadIdx.x + blockDim.x * (index_t)blockIdx.x;
+
+    // out of range, just return
+    if (tid > domain_size) {
+        return;
+    }
+
+    out[tid] =  product_argment(tid, domain_size PRODUCT_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM

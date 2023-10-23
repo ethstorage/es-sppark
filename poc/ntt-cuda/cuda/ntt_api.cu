@@ -41,4 +41,14 @@ RustError compute_quotient_term(size_t device_id, uint32_t lg_domain_size,
 
     return ARITHMETIC::quotient_poly_gpu(gpu, lg_domain_size, out TOTAL_PARAMETER);
 }
+
+extern "C"
+RustError compute_product_argument(size_t device_id, uint32_t lg_domain_size,
+                                  fr_t* out PRODUCT_ARGUMENT)
+{
+    auto& gpu = select_gpu(device_id);
+
+    return ARITHMETIC::product_argument_gpu(gpu, lg_domain_size, out PRODUCT_PARAMETER);
+}
+
 #endif

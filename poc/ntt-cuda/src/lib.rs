@@ -80,6 +80,27 @@ extern "C" {
     ) -> cuda::Error;
 }
 
+extern "C" {
+    fn compute_product_argument(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        root: *const core::ffi::c_void,
+        gate_sigma0: *const core::ffi::c_void,
+        gate_sigma1: *const core::ffi::c_void,
+        gate_sigma2: *const core::ffi::c_void,
+        gate_sigma3: *const core::ffi::c_void,
+        gate_wire0: *const core::ffi::c_void,
+        gate_wire1: *const core::ffi::c_void,
+        gate_wire2: *const core::ffi::c_void,
+        gate_wire3: *const core::ffi::c_void,
+        ks: *const core::ffi::c_void,
+        beta: *const core::ffi::c_void,
+        gamma: *const core::ffi::c_void,
+    ) -> cuda::Error;
+}
+
+
 /// Compute an in-place NTT on the input data.
 #[allow(non_snake_case)]
 pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
@@ -324,6 +345,61 @@ pub fn quotient_term_gpu<T>(
             challenges.as_ptr() as *const core::ffi::c_void,
             curve_parameters.as_ptr() as *const core::ffi::c_void,
             perm_parameters.as_ptr() as *const core::ffi::c_void,
+        )
+    };
+
+    if err.code != 0 {
+        panic!("{}", String::from(err));
+    }
+}
+
+
+pub fn product_argument_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    root: &[T],
+    gate_sigma0: &[T],
+    gate_sigma1: &[T],
+    gate_sigma2: &[T],
+    gate_sigma3: &[T],
+    gate_wire0: &[T],
+    gate_wire1: &[T],
+    gate_wire2: &[T],
+    gate_wire3: &[T],
+    ks: &[T],
+    beta: T,
+    gamma: T
+) {
+    let aux = vec![out.len(), root.len(), gate_sigma0.len(), gate_sigma1.len(), gate_sigma2.len(), gate_sigma3.len(),
+        gate_wire0.len(), gate_wire1.len(), gate_wire2.len(), gate_wire3.len(),
+    ];
+
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    let len = aux[0];
+
+    let beta_arr = &[beta];
+    let gamma_arr = &[gamma];
+    let err = unsafe {
+        compute_product_argument(
+            device_id,
+            len.trailing_zeros(),
+            out.as_mut_ptr() as *mut core::ffi::c_void,
+            root.as_ptr() as *const core::ffi::c_void,
+            gate_sigma0.as_ptr() as *const core::ffi::c_void,
+            gate_sigma1.as_ptr() as *const core::ffi::c_void,
+            gate_sigma2.as_ptr() as *const core::ffi::c_void,
+            gate_sigma3.as_ptr() as *const core::ffi::c_void,
+            gate_wire0.as_ptr() as *const core::ffi::c_void,
+            gate_wire1.as_ptr() as *const core::ffi::c_void,
+            gate_wire2.as_ptr() as *const core::ffi::c_void,
+            gate_wire3.as_ptr() as *const core::ffi::c_void,
+            ks.as_ptr() as *const core::ffi::c_void,
+            beta_arr.as_ptr() as *const core::ffi::c_void,
+            gamma_arr.as_ptr() as *const core::ffi::c_void,
         )
     };
 
