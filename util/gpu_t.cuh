@@ -12,6 +12,7 @@
 #include "thread_pool_t.hpp"
 #include "exception.cuh"
 #include "slice_t.hpp"
+#include <iostream>
 
 #ifndef WARP_SZ
 # define WARP_SZ 32
@@ -314,6 +315,9 @@ public:
     {
         if (nelems) {
             size_t n = (nelems+WARP_SZ-1) & ((size_t)0-WARP_SZ);
+            std::cerr << "a GPU buffer length is " << n << 
+            " and single element size is " << sizeof(T) << " then total size is "<<
+            n * sizeof(T) / (1024 * 1024) << "MB to be allocated"<< std::endl;
             CUDA_OK(cudaMalloc(&d_ptr, n * sizeof(T)));
         }
     }
@@ -321,12 +325,21 @@ public:
     {
         if (nelems) {
             size_t n = (nelems+WARP_SZ-1) & ((size_t)0-WARP_SZ);
+            std::cerr << "a GPU buffer length is " << n << 
+            " and single element size is " << sizeof(T) << " then total size is "<<
+            n * sizeof(T) / (1024 * 1024) << "MB to be allocated"<< std::endl;
             CUDA_OK(cudaMallocAsync(&d_ptr, n * sizeof(T), s));
         }
     }
     dev_ptr_t(const dev_ptr_t& r) = delete;
     dev_ptr_t& operator=(const dev_ptr_t& r) = delete;
-    ~dev_ptr_t() { if (d_ptr) cudaFree((void*)d_ptr); }
+    ~dev_ptr_t() { 
+        if (d_ptr)
+          cudaFree((void*)d_ptr);
+        
+            std::cerr << "a GPU buffer length has been freed"<< std::endl;
+    }
+
 
     inline operator const T*() const            { return d_ptr; }
     inline operator T*() const                  { return d_ptr; }
