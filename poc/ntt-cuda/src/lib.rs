@@ -225,13 +225,6 @@ pub fn quotient_term_gpu<T>(
 ) {
     // First check whether majority of the vectors have the same length
     let aux = vec![
-        w_l.len(),
-        w_r.len(),
-        w_4.len(),
-        z.len(),
-        z2.len(),
-        h1.len(),
-        table.len(),
         out.len(),
         w_o.len(),
         q_l.len(),
@@ -266,6 +259,20 @@ pub fn quotient_term_gpu<T>(
         panic!(" input series must have the same length ");
     }
     let len = aux[0];
+
+    let aux2 = vec![
+        w_l.len(),
+        w_r.len(),
+        w_4.len(),
+        z.len(),
+        z2.len(),
+        h1.len(),
+        table.len(),
+    ];
+    let all_same_length = aux2.iter().all(|v| *v == len + 8);
+    if !all_same_length {
+        panic!(" extended series must have the same length, len + 8 ");
+    }
 
     // challenges only have 5 elements
     assert!(challenges.len() == 5);

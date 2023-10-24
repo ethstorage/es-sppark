@@ -5,7 +5,9 @@
 // Some constant macro only be used in this file
 #define MAX_THREAD_NUM 1024
 // 8 is the row of gate constraint, because we extend the domain by 8
-#define NEXT(index, domain_size) ((index + 8) % domain_size)
+// NOTE: The caller must make sure the buffer is at length of domain_size + 8
+//       Otherwise it would cause out of bound error
+#define NEXT(index, domain_size) (index + 8)
 #define ONE fr_t::one()
 #define TWO (fr_t::one() + fr_t::one())
 #define THREE (fr_t::one() + fr_t::one() + fr_t::one())
