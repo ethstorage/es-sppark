@@ -316,9 +316,9 @@ public:
     {
         if (nelems) {
             size_t n = (nelems+WARP_SZ-1) & ((size_t)0-WARP_SZ);
-            std::cerr << "a GPU buffer length is " << n << 
-            " and single element size is " << sizeof(T) << " then total size is "<<
-            n * sizeof(T) / (1024 * 1024) << "MB to be allocated"<< std::endl;
+            // std::cerr << "a GPU buffer length is " << n << 
+            // " and single element size is " << sizeof(T) << " then total size is "<<
+            // n * sizeof(T) / (1024 * 1024) << "MB to be allocated"<< std::endl;
             CUDA_OK(cudaMalloc(&d_ptr, n * sizeof(T)));
         }
     }
@@ -326,9 +326,9 @@ public:
     {
         if (nelems) {
             size_t n = (nelems+WARP_SZ-1) & ((size_t)0-WARP_SZ);
-            std::cerr << "a GPU buffer length is " << n << 
-            " and single element size is " << sizeof(T) << " then total size is "<<
-            n * sizeof(T) / (1024 * 1024) << "MB to be allocated"<< std::endl;
+           // std::cerr << "a GPU buffer length is " << n << 
+           // " and single element size is " << sizeof(T) << " then total size is "<<
+           // n * sizeof(T) / (1024 * 1024) << "MB to be allocated"<< std::endl;
             CUDA_OK(cudaMallocAsync(&d_ptr, n * sizeof(T), s));
         }
     }
@@ -338,7 +338,7 @@ public:
         if (d_ptr)
           cudaFree((void*)d_ptr);
         
-            std::cerr << "a GPU buffer length has been freed"<< std::endl;
+        //std::cerr << "a GPU buffer length has been freed"<< std::endl;
     }
 
 

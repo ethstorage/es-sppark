@@ -144,7 +144,6 @@ public:
             dev_ptr_t<fr_t> d_inout{domain_size, gpu};
             gpu.HtoD(&d_inout[0], inout, domain_size);
 
-            std::cerr<<"FFT inout has been allocated on GPU"<<std::endl;
             NTT_internal(&d_inout[0], lg_domain_size, order, direction, type, gpu);
 
             gpu.DtoH(inout, &d_inout[0], domain_size);

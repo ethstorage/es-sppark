@@ -4,6 +4,28 @@
 
 sppark::cuda_error!();
 
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static!{
+    /// The default GPU device ID
+    static ref DEFAULT_GPU: usize = 0;
+
+    static ref DEFAULT_GPU_MAX: (u64, u64) = {
+        let id = *DEFAULT_GPU;
+        let mut max_memory: u64 = 0;
+        let mut max_threading: u64 = 0;
+        unsafe { cuda_get_info(id as i32, &mut max_memory, &mut max_threading) };
+        (max_memory, max_threading)
+    };
+
+    static ref DEFAULT_GPU_MAX_MEMORY: u64 = DEFAULT_GPU_MAX.0;
+    static ref DEFAULT_GPU_MAX_THREADING: u64 = DEFAULT_GPU_MAX.1;
+    
+    // Reserve 1G memory for each GPU
+    static ref MEMORY_RESERVE: u64 = 1024 * 1024 * 1024;
+}
+
 #[repr(C)]
 pub enum NTTInputOutputOrder {
     NN = 0,
@@ -82,6 +104,26 @@ extern "C" {
 
 extern "C" {
     fn cuda_get_info(id: i32, max_memory: *mut u64, max_threading: *mut u64);
+}
+
+// Helper function to floor a number to the nearest power of 2
+fn floor_pow2(n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+
+    let mut n = n;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    if std::mem::size_of::<usize>() == 8 {
+        n |= n >> 32;
+    }
+    n = n - (n >> 1);
+
+    n
 }
 
 /// Compute an in-place NTT on the input data.
@@ -292,55 +334,94 @@ pub fn quotient_term_gpu<T>(
         panic!("inout.len() is not power of 2");
     }
 
-    // Call GPU kernel
-    let err = unsafe {
-        compute_quotient_term(
-            device_id,
-            len.trailing_zeros(),
-            out.as_mut_ptr() as *mut core::ffi::c_void,
-            w_l.as_ptr() as *const core::ffi::c_void,
-            w_r.as_ptr() as *const core::ffi::c_void,
-            w_o.as_ptr() as *const core::ffi::c_void,
-            w_4.as_ptr() as *const core::ffi::c_void,
-            q_l.as_ptr() as *const core::ffi::c_void,
-            q_r.as_ptr() as *const core::ffi::c_void,
-            q_o.as_ptr() as *const core::ffi::c_void,
-            q_4.as_ptr() as *const core::ffi::c_void,
-            q_hl.as_ptr() as *const core::ffi::c_void,
-            q_hr.as_ptr() as *const core::ffi::c_void,
-            q_h4.as_ptr() as *const core::ffi::c_void,
-            q_c.as_ptr() as *const core::ffi::c_void,
-            q_arith.as_ptr() as *const core::ffi::c_void,
-            q_m.as_ptr() as *const core::ffi::c_void,
-            r_s.as_ptr() as *const core::ffi::c_void,
-            l_s.as_ptr() as *const core::ffi::c_void,
-            fbms_s.as_ptr() as *const core::ffi::c_void,
-            vgca_s.as_ptr() as *const core::ffi::c_void,
-            pi.as_ptr() as *const core::ffi::c_void,
-            z.as_ptr() as *const core::ffi::c_void,
-            perm_linear.as_ptr() as *const core::ffi::c_void,
-            sigma_l.as_ptr() as *const core::ffi::c_void,
-            sigma_r.as_ptr() as *const core::ffi::c_void,
-            sigma_o.as_ptr() as *const core::ffi::c_void,
-            sigma_4.as_ptr() as *const core::ffi::c_void,
-            q_lookup.as_ptr() as *const core::ffi::c_void,
-            table.as_ptr() as *const core::ffi::c_void,
-            f.as_ptr() as *const core::ffi::c_void,
-            h1.as_ptr() as *const core::ffi::c_void,
-            h2.as_ptr() as *const core::ffi::c_void,
-            z2.as_ptr() as *const core::ffi::c_void,
-            l1.as_ptr() as *const core::ffi::c_void,
-            l1_alpha_sq.as_ptr() as *const core::ffi::c_void,
-            v_h_coset.as_ptr() as *const core::ffi::c_void,
-            challenges.as_ptr() as *const core::ffi::c_void,
-            curve_parameters.as_ptr() as *const core::ffi::c_void,
-            perm_parameters.as_ptr() as *const core::ffi::c_void,
-        )
-    };
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
 
-    if err.code != 0 {
-        panic!("{}", String::from(err));
+    // Total memory required
+    let total_memory = size_of_t * (aux.len() * len + aux2.len() * (len + 8) + 5 + 2 + 6);
+
+    // Available memory
+    let gpu_memory = *DEFAULT_GPU_MAX_MEMORY - *MEMORY_RESERVE;
+    // TEST USE ONLY
+    // let gpu_memory = total_memory as u64 / 6;
+
+    // How many round if memory is not enough
+    let round = (total_memory as u64 + gpu_memory - 1) / gpu_memory;
+
+    // Proper size (of buffer length) fit for FFT
+    let domain_size = floor_pow2(len / round as usize);
+
+    // Thread number
+    let thread_num = *DEFAULT_GPU_MAX_THREADING;
+
+    // Must be power of 2
+    assert!((domain_size & (domain_size - 1)) == 0);
+
+    // Normally GPU threading is around 2^63 or so, simply calculation will leads to u64 overflow
+    // So we only need to check if domain size is smaller than thread number
+    assert!(domain_size <= thread_num as usize);
+
+    println!("buffer size {}, total memory needed {} bytes, gpu memory available {} bytes, domain_size: {}, round: {}", len, total_memory, gpu_memory, domain_size, len / domain_size);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0 .. len/domain_size {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = (i + 1) * domain_size;
+        let extend_end = end + 8;
+        
+        // Call GPU kernel
+        let err = unsafe {
+            compute_quotient_term(
+                device_id,
+                domain_size.trailing_zeros(),
+                out[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                w_l[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                w_r[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                w_o[start..end].as_ptr() as *const core::ffi::c_void,
+                w_4[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                q_l[start..end].as_ptr() as *const core::ffi::c_void,
+                q_r[start..end].as_ptr() as *const core::ffi::c_void,
+                q_o[start..end].as_ptr() as *const core::ffi::c_void,
+                q_4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_hl[start..end].as_ptr() as *const core::ffi::c_void,
+                q_hr[start..end].as_ptr() as *const core::ffi::c_void,
+                q_h4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_c[start..end].as_ptr() as *const core::ffi::c_void,
+                q_arith[start..end].as_ptr() as *const core::ffi::c_void,
+                q_m[start..end].as_ptr() as *const core::ffi::c_void,
+                r_s[start..end].as_ptr() as *const core::ffi::c_void,
+                l_s[start..end].as_ptr() as *const core::ffi::c_void,
+                fbms_s[start..end].as_ptr() as *const core::ffi::c_void,
+                vgca_s[start..end].as_ptr() as *const core::ffi::c_void,
+                pi[start..end].as_ptr() as *const core::ffi::c_void,
+                z[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                perm_linear[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_l[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_r[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_o[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_lookup[start..end].as_ptr() as *const core::ffi::c_void,
+                table[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                f[start..end].as_ptr() as *const core::ffi::c_void,
+                h1[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                h2[start..end].as_ptr() as *const core::ffi::c_void,
+                z2[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                l1[start..end].as_ptr() as *const core::ffi::c_void,
+                l1_alpha_sq[start..end].as_ptr() as *const core::ffi::c_void,
+                v_h_coset[start..end].as_ptr() as *const core::ffi::c_void,
+                challenges.as_ptr() as *const core::ffi::c_void,
+                curve_parameters.as_ptr() as *const core::ffi::c_void,
+                perm_parameters.as_ptr() as *const core::ffi::c_void,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
     }
+    
 }
 
 pub fn get_cuda_info(device_id: i32) -> (u64, u64) {

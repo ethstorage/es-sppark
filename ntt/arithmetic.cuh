@@ -61,7 +61,7 @@ class ARITHMETIC {
 
 public:
     static RustError quotient_poly_gpu(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
-                                     TOTAL_ARGUMENT)
+                                       TOTAL_ARGUMENT)
     {
         if (lg_domain_size == 0)
             return RustError{cudaSuccess};
