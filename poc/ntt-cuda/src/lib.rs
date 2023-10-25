@@ -341,7 +341,10 @@ pub fn quotient_term_gpu<T>(
     let total_memory = size_of_t * (aux.len() * len + aux2.len() * (len + 8) + 5 + 2 + 6);
 
     // Available memory
-    let gpu_memory = *DEFAULT_GPU_MAX_MEMORY - *MEMORY_RESERVE;
+    let gpu_memory = {
+        let gpu_mem = if device_id != *DEFAULT_GPU {get_cuda_info(device_id as i32).0} else {*DEFAULT_GPU_MAX_MEMORY};
+        gpu_mem - *MEMORY_RESERVE
+    };
     // TEST USE ONLY
     // let gpu_memory = total_memory as u64 / 6;
 
@@ -352,7 +355,7 @@ pub fn quotient_term_gpu<T>(
     let domain_size = floor_pow2(len / round as usize);
 
     // Thread number
-    let thread_num = *DEFAULT_GPU_MAX_THREADING;
+    let thread_num = if device_id != *DEFAULT_GPU {get_cuda_info(device_id as i32).1} else {*DEFAULT_GPU_MAX_THREADING};
 
     // Must be power of 2
     assert!((domain_size & (domain_size - 1)) == 0);
