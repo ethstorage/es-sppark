@@ -80,6 +80,10 @@ extern "C" {
     ) -> cuda::Error;
 }
 
+extern "C" {
+    fn cuda_get_info(id: i32, max_memory: *mut u64, max_threading: *mut u64);
+}
+
 /// Compute an in-place NTT on the input data.
 #[allow(non_snake_case)]
 pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
@@ -337,4 +341,11 @@ pub fn quotient_term_gpu<T>(
     if err.code != 0 {
         panic!("{}", String::from(err));
     }
+}
+
+pub fn get_cuda_info(device_id: i32) -> (u64, u64) {
+    let mut max_memory: u64 = 0;
+    let mut max_threading: u64 = 0;
+    unsafe { cuda_get_info(device_id, &mut max_memory, &mut max_threading) };
+    (max_memory, max_threading)
 }
