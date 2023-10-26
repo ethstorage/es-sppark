@@ -22,8 +22,8 @@ lazy_static!{
     static ref DEFAULT_GPU_MAX_MEMORY: u64 = DEFAULT_GPU_MAX.0;
     static ref DEFAULT_GPU_MAX_THREADING: u64 = DEFAULT_GPU_MAX.1;
     
-    // Reserve 1G memory for each GPU
-    static ref MEMORY_RESERVE: u64 = 1024 * 1024 * 1024;
+    // Reserve 512MB memory for each GPU
+    static ref MEMORY_RESERVE: u64 = 512 * 1024 * 1024;
 }
 
 #[repr(C)]
@@ -127,13 +127,35 @@ fn floor_pow2(n: usize) -> usize {
     n
 }
 
+macro_rules! check_len {
+    ($len:expr, $device_id:expr, $T:expr) => {
+        if ($len & ($len - 1)) != 0 {
+            panic!("inout.len() is not power of 2");
+        }
+        
+        // Available memory
+        let gpu_memory = {
+            let gpu_mem = if $device_id != *DEFAULT_GPU {get_cuda_info($device_id as i32).0} else {*DEFAULT_GPU_MAX_MEMORY};
+            gpu_mem - *MEMORY_RESERVE
+        };
+
+        // Thread number
+        let thread_num = if $device_id != *DEFAULT_GPU {get_cuda_info($device_id as i32).1} else {*DEFAULT_GPU_MAX_THREADING};
+        
+        // Single size of T
+        let size_of_t = std::mem::size_of::<T>(); 
+
+        // FFT must be done within one round
+        assert!($len * size_of_t <= gpu_memory as usize);
+        assert!($len <= thread_num as usize);
+    };
+}
+
 /// Compute an in-place NTT on the input data.
 #[allow(non_snake_case)]
 pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -155,9 +177,7 @@ pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
 #[allow(non_snake_case)]
 pub fn iNTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -182,9 +202,7 @@ pub fn coset_NTT<T>(
     order: NTTInputOutputOrder,
 ) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -209,9 +227,7 @@ pub fn coset_iNTT<T>(
     order: NTTInputOutputOrder,
 ) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
