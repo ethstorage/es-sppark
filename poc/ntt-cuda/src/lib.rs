@@ -60,7 +60,7 @@ extern "C" {
 extern "C" {
     fn compute_quotient_term(
         device_id: usize,
-        lg_domain_size: u32,
+        domain_size: usize,
         out: *mut core::ffi::c_void,
         w_l: *const core::ffi::c_void,
         w_r: *const core::ffi::c_void,
@@ -107,6 +107,7 @@ extern "C" {
 }
 
 // Helper function to floor a number to the nearest power of 2
+#[allow(unused)]
 fn floor_pow2(n: usize) -> usize {
     if n == 0 {
         return 0;
@@ -346,19 +347,20 @@ pub fn quotient_term_gpu<T>(
         gpu_mem - *MEMORY_RESERVE
     };
     // TEST USE ONLY
-    // let gpu_memory = total_memory as u64 / 6;
+    // let gpu_memory = total_memory as u64 / 7;
 
     // How many round if memory is not enough
     let round = (total_memory as u64 + gpu_memory - 1) / gpu_memory;
+    let round = round as usize;
 
-    // Proper size (of buffer length) fit for FFT
-    let domain_size = floor_pow2(len / round as usize);
+    // Proper size (of buffer length)
+    let domain_size = (len + round - 1)/ round as usize;
+
+    // domain_size is no need for 2^n, however total size should cover len
+    assert!(domain_size * round >= len);
 
     // Thread number
     let thread_num = if device_id != *DEFAULT_GPU {get_cuda_info(device_id as i32).1} else {*DEFAULT_GPU_MAX_THREADING};
-
-    // Must be power of 2
-    assert!((domain_size & (domain_size - 1)) == 0);
 
     // Normally GPU threading is around 2^63 or so, simply calculation will leads to u64 overflow
     // So we only need to check if domain size is smaller than thread number
@@ -368,17 +370,26 @@ pub fn quotient_term_gpu<T>(
 
     // Burden same GPU for now
     // Submit all buffer to same GPU in sequence
-    for i in 0 .. len/domain_size {
+    for i in 0 .. round {
         // Compute the start and end index
         let start = i * domain_size;
-        let end = (i + 1) * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
         let extend_end = end + 8;
         
+        println!("round {}, start {}, end {}, extend_end {}", i, start, end, extend_end);
+        // Simple memory sanitizer
+        {
+          let _ = w_l[start];
+          let _ = w_r[end-1];
+          let _ = table[end];
+          let _ = w_4[extend_end-1];
+        }
+
         // Call GPU kernel
         let err = unsafe {
             compute_quotient_term(
                 device_id,
-                domain_size.trailing_zeros(),
+                end - start,
                 out[start..end].as_mut_ptr() as *mut core::ffi::c_void,
                 w_l[start..extend_end].as_ptr() as *const core::ffi::c_void,
                 w_r[start..extend_end].as_ptr() as *const core::ffi::c_void,

@@ -60,16 +60,14 @@
 class ARITHMETIC {
 
 public:
-    static RustError quotient_poly_gpu(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
+    static RustError quotient_poly_gpu(const gpu_t& gpu, size_t domain_size, fr_t* out
                                        TOTAL_ARGUMENT)
     {
-        if (lg_domain_size == 0)
+        if (domain_size == 0)
             return RustError{cudaSuccess};
 
         try {
             gpu.select();
-
-            size_t domain_size = (size_t)1 << lg_domain_size;
 
             // For normal length buffer
 #define MAKE_DEV_PTR(var) dev_ptr_t<fr_t> d_##var{domain_size, gpu}; 
@@ -106,7 +104,7 @@ public:
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
 #define MAKE_KERNEL_PARAMETER(var) , d_##var
-            quotient_poly_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
+            quotient_poly_kernel<<<block_size, thread_size, 0, gpu>>>(domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
                                                                             AUX_LIST(MAKE_KERNEL_PARAMETER));
 
             auto err = cudaGetLastError();

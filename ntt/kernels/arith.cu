@@ -360,13 +360,12 @@ __device__ __forceinline__ fr_t lookup_term(size_t i, size_t domain_size TOTAL_A
 
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
-void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
+void quotient_poly_kernel(const size_t domain_size, fr_t* out
                                 TOTAL_ARGUMENT)
 {
 #if (__CUDACC_VER_MAJOR__-0) >= 11
-    __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
+    __builtin_assume(domain_size <= (1 << MAX_LG_DOMAIN_SIZE));
 #endif
-    uint domain_size = 1 << lg_domain_size;
     const index_t tid = threadIdx.x + blockDim.x * (index_t)blockIdx.x;
 
     // out of range, just return
