@@ -51,4 +51,13 @@ RustError compute_product_argument(size_t device_id, uint32_t lg_domain_size,
     return ARITHMETIC::product_argument_gpu(gpu, lg_domain_size, out PRODUCT_PARAMETER);
 }
 
+extern "C"
+RustError compute_lookup_product_argument(size_t device_id, uint32_t lg_domain_size,
+                                  fr_t* out LOOKUP_PRODUCT_ARGUMENT)
+{
+    auto& gpu = select_gpu(device_id);
+
+    return ARITHMETIC::lookup_product_argument_gpu(gpu, lg_domain_size, out LOOKUP_PRODUCT_PARAMETER);
+}
+
 #endif

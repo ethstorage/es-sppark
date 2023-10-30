@@ -121,6 +121,24 @@
 #define PRODUCT_PARAMETER \
     PRODUCT_POINTER_LIST(MAKE_PARAMETER) PRODUCT_AUX_LIST(MAKE_PARAMETER)
 
+#define LOOKUP_PRODUCT_POINTER_LIST(X) \
+    X(f) \
+    X(t) \
+    X(t_next) \
+    X(h_1) \
+    X(h_1_next) \
+    X(h_2) \
+
+#define LOOKUP_PRODUCT_AUX_LIST(X) \
+    X(delta) \
+    X(epsilon) \
+
+#define LOOKUP_PRODUCT_ARGUMENT \
+    LOOKUP_PRODUCT_POINTER_LIST(MAKE_PTR_ARGUMENT) LOOKUP_PRODUCT_AUX_LIST(MAKE_PTR_ARGUMENT)
+
+#define LOOKUP_PRODUCT_PARAMETER \
+    LOOKUP_PRODUCT_POINTER_LIST(MAKE_PARAMETER) LOOKUP_PRODUCT_AUX_LIST(MAKE_PARAMETER)
+
 /*-------------------------GATE SAT---------------------------------------*/
 __device__ __forceinline__ fr_t compute_quotient_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
@@ -393,6 +411,20 @@ __device__ __forceinline__ fr_t product_argment(size_t i, size_t domain_size PRO
     return numerator_product / denominator_product;
 }
 
+/*--------------------------------------LOOKUP PRODUCT ARGUMENT--------------------------------------------*/
+__device__ __forceinline__ fr_t lookup_product_argment(size_t i, size_t domain_size LOOKUP_PRODUCT_ARGUMENT) {
+    fr_t _epsilon = epsilon[0];
+    fr_t _delta = delta[0];
+    fr_t one_plus_delta = _delta + ONE;
+    fr_t epsilon_one_plus_delta = _epsilon * one_plus_delta;
+    fr_t denominator_product = one_plus_delta * (_epsilon + f[i]) 
+        * (epsilon_one_plus_delta + t[i] + _delta * t_next[i])
+        * (epsilon_one_plus_delta + h_1[i] + _delta * h_2[i])
+        * (epsilon_one_plus_delta + h_2[i] + _delta * h_1_next[i]);
+
+    return ONE / denominator_product;
+}
+
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
@@ -432,6 +464,24 @@ void product_argment_kernel(const uint lg_domain_size, fr_t* out
     }
 
     out[tid] =  product_argment(tid, domain_size PRODUCT_PARAMETER);
+}
+
+__launch_bounds__(MAX_THREAD_NUM, 1) __global__
+void lookup_product_argment_kernel(const uint lg_domain_size, fr_t* out
+                                LOOKUP_PRODUCT_ARGUMENT)
+{
+#if (__CUDACC_VER_MAJOR__-0) >= 11
+    __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
+#endif
+    uint domain_size = 1 << lg_domain_size;
+    const index_t tid = threadIdx.x + blockDim.x * (index_t)blockIdx.x;
+
+    // out of range, just return
+    if (tid > domain_size) {
+        return;
+    }
+
+    out[tid] =  lookup_product_argment(tid, domain_size LOOKUP_PRODUCT_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM

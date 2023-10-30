@@ -98,6 +98,20 @@ extern "C" {
         beta: *const core::ffi::c_void,
         gamma: *const core::ffi::c_void,
     ) -> cuda::Error;
+
+    fn compute_lookup_product_argument(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        f: *const core::ffi::c_void,
+        t: *const core::ffi::c_void,
+        t_next: *const core::ffi::c_void,
+        h_1: *const core::ffi::c_void,
+        h_1_next: *const core::ffi::c_void,
+        h_2: *const core::ffi::c_void,
+        delta_arr: *const core::ffi::c_void,
+        epsilon_arr: *const core::ffi::c_void,
+    ) -> cuda::Error;
 }
 
 
@@ -400,6 +414,51 @@ pub fn product_argument_gpu<T>(
             ks.as_ptr() as *const core::ffi::c_void,
             beta_arr.as_ptr() as *const core::ffi::c_void,
             gamma_arr.as_ptr() as *const core::ffi::c_void,
+        )
+    };
+
+    if err.code != 0 {
+        panic!("{}", String::from(err));
+    }
+}
+
+
+pub fn lookup_product_argument_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    f: &[T],
+    t: &[T],
+    t_next: &[T],
+    h_1: &[T],
+    h_1_next: &[T],
+    h_2: &[T],
+    delta: T,
+    epsilon: T
+) {
+    let aux = vec![f.len(), t.len(), t_next.len(), h_1.len(), h_1_next.len(), h_2.len()];
+
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    let len = aux[0];
+
+    let delta_arr = &[delta];
+    let epsilon_arr = &[epsilon];
+    let err = unsafe {
+        compute_lookup_product_argument(
+            device_id,
+            len.trailing_zeros(),
+            out.as_mut_ptr() as *mut core::ffi::c_void,
+            f.as_ptr() as *const core::ffi::c_void,
+            t.as_ptr() as *const core::ffi::c_void,
+            t_next.as_ptr() as *const core::ffi::c_void,
+            h_1.as_ptr() as *const core::ffi::c_void,
+            h_1_next.as_ptr() as *const core::ffi::c_void,
+            h_2.as_ptr() as *const core::ffi::c_void,
+            delta_arr.as_ptr() as *const core::ffi::c_void,
+            epsilon_arr.as_ptr() as *const core::ffi::c_void,
         )
     };
 
