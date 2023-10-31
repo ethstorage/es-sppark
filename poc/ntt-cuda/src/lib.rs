@@ -7,7 +7,7 @@ sppark::cuda_error!();
 #[macro_use]
 extern crate lazy_static;
 
-lazy_static!{
+lazy_static! {
     /// The default GPU device ID
     static ref DEFAULT_GPU: usize = 0;
 
@@ -21,7 +21,7 @@ lazy_static!{
 
     static ref DEFAULT_GPU_MAX_MEMORY: u64 = DEFAULT_GPU_MAX.0;
     static ref DEFAULT_GPU_MAX_THREADING: u64 = DEFAULT_GPU_MAX.1;
-    
+
     // Reserve 512MB memory for each GPU
     static ref MEMORY_RESERVE: u64 = 512 * 1024 * 1024;
 }
@@ -132,18 +132,26 @@ macro_rules! check_len {
         if ($len & ($len - 1)) != 0 {
             panic!("inout.len() is not power of 2");
         }
-        
+
         // Available memory
         let gpu_memory = {
-            let gpu_mem = if $device_id != *DEFAULT_GPU {get_cuda_info($device_id as i32).0} else {*DEFAULT_GPU_MAX_MEMORY};
+            let gpu_mem = if $device_id != *DEFAULT_GPU {
+                get_cuda_info($device_id as i32).0
+            } else {
+                *DEFAULT_GPU_MAX_MEMORY
+            };
             gpu_mem - *MEMORY_RESERVE
         };
 
         // Thread number
-        let thread_num = if $device_id != *DEFAULT_GPU {get_cuda_info($device_id as i32).1} else {*DEFAULT_GPU_MAX_THREADING};
-        
+        let thread_num = if $device_id != *DEFAULT_GPU {
+            get_cuda_info($device_id as i32).1
+        } else {
+            *DEFAULT_GPU_MAX_THREADING
+        };
+
         // Single size of T
-        let size_of_t = std::mem::size_of::<T>(); 
+        let size_of_t = std::mem::size_of::<T>();
 
         // FFT must be done within one round
         assert!($len * size_of_t <= gpu_memory as usize);
@@ -355,11 +363,16 @@ pub fn quotient_term_gpu<T>(
     let size_of_t = std::mem::size_of::<T>();
 
     // Total memory required
-    let total_memory = size_of_t * (aux.len() * len + aux2.len() * (len + 8) + 5 + 2 + 6);
+    let total_memory =
+        size_of_t * (aux.len() * len + aux2.len() * (len + 8) + 5 + 2 + 6);
 
     // Available memory
     let gpu_memory = {
-        let gpu_mem = if device_id != *DEFAULT_GPU {get_cuda_info(device_id as i32).0} else {*DEFAULT_GPU_MAX_MEMORY};
+        let gpu_mem = if device_id != *DEFAULT_GPU {
+            get_cuda_info(device_id as i32).0
+        } else {
+            *DEFAULT_GPU_MAX_MEMORY
+        };
         gpu_mem - *MEMORY_RESERVE
     };
     // TEST USE ONLY
@@ -370,35 +383,43 @@ pub fn quotient_term_gpu<T>(
     let round = round as usize;
 
     // Proper size (of buffer length)
-    let domain_size = (len + round - 1)/ round as usize;
+    let domain_size = (len + round - 1) / round as usize;
 
     // domain_size is no need for 2^n, however total size should cover len
     assert!(domain_size * round >= len);
 
     // Thread number
-    let thread_num = if device_id != *DEFAULT_GPU {get_cuda_info(device_id as i32).1} else {*DEFAULT_GPU_MAX_THREADING};
+    let thread_num = if device_id != *DEFAULT_GPU {
+        get_cuda_info(device_id as i32).1
+    } else {
+        *DEFAULT_GPU_MAX_THREADING
+    };
 
-    // Normally GPU threading is around 2^63 or so, simply calculation will leads to u64 overflow
-    // So we only need to check if domain size is smaller than thread number
+    // Normally GPU threading is around 2^63 or so, simply calculation will
+    // leads to u64 overflow So we only need to check if domain size is
+    // smaller than thread number
     assert!(domain_size <= thread_num as usize);
 
     println!("buffer size {}, total memory needed {} bytes, gpu memory available {} bytes, domain_size: {}, round: {}", len, total_memory, gpu_memory, domain_size, len / domain_size);
 
     // Burden same GPU for now
     // Submit all buffer to same GPU in sequence
-    for i in 0 .. round {
+    for i in 0..round {
         // Compute the start and end index
         let start = i * domain_size;
         let end = std::cmp::min((i + 1) * domain_size, len);
         let extend_end = end + 8;
-        
-        println!("round {}, start {}, end {}, extend_end {}", i, start, end, extend_end);
+
+        println!(
+            "round {}, start {}, end {}, extend_end {}",
+            i, start, end, extend_end
+        );
         // Simple memory sanitizer
         {
-          let _ = w_l[start];
-          let _ = w_r[end-1];
-          let _ = table[end];
-          let _ = w_4[extend_end-1];
+            let _ = w_l[start];
+            let _ = w_r[end - 1];
+            let _ = table[end];
+            let _ = w_4[extend_end - 1];
         }
 
         // Call GPU kernel
@@ -451,7 +472,6 @@ pub fn quotient_term_gpu<T>(
             panic!("{}", String::from(err));
         }
     }
-    
 }
 
 pub fn get_cuda_info(device_id: i32) -> (u64, u64) {
