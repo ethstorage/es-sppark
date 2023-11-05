@@ -5,7 +5,9 @@
 // Some constant macro only be used in this file
 #define MAX_THREAD_NUM 1024
 // 8 is the row of gate constraint, because we extend the domain by 8
-#define NEXT(index, domain_size) ((index + 8) % domain_size)
+// NOTE: The caller must make sure the buffer is at length of domain_size + 8
+//       Otherwise it would cause out of bound error
+#define NEXT(index, domain_size) (index + 8)
 #define ONE fr_t::one()
 #define TWO (fr_t::one() + fr_t::one())
 #define THREE (fr_t::one() + fr_t::one() + fr_t::one())
@@ -426,13 +428,12 @@ __device__ __forceinline__ fr_t lookup_product_argment(size_t i, size_t domain_s
 
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
-void quotient_poly_kernel(const uint lg_domain_size, fr_t* out
+void quotient_poly_kernel(const size_t domain_size, fr_t* out
                                 TOTAL_ARGUMENT)
 {
 #if (__CUDACC_VER_MAJOR__-0) >= 11
-    __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
+    __builtin_assume(domain_size <= (1 << MAX_LG_DOMAIN_SIZE));
 #endif
-    uint domain_size = 1 << lg_domain_size;
     const index_t tid = threadIdx.x + blockDim.x * (index_t)blockIdx.x;
 
     // out of range, just return
