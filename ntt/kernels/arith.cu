@@ -417,12 +417,11 @@ __device__ __forceinline__ fr_t lookup_product_argment(size_t i, size_t domain_s
     fr_t _delta = delta[0];
     fr_t one_plus_delta = _delta + ONE;
     fr_t epsilon_one_plus_delta = _epsilon * one_plus_delta;
-    fr_t denominator_product = one_plus_delta * (_epsilon + f[i]) 
-        * (epsilon_one_plus_delta + t[i] + _delta * t_next[i])
-        * (epsilon_one_plus_delta + h_1[i] + _delta * h_2[i])
-        * (epsilon_one_plus_delta + h_2[i] + _delta * h_1_next[i]);
-
-    return ONE / denominator_product;
+    fr_t part_1 = one_plus_delta * (_epsilon + f[i]) 
+        * (epsilon_one_plus_delta + t[i] + _delta * t_next[i]);
+    fr_t part_2 = ((epsilon_one_plus_delta + h_1[i] + _delta * h_2[i])
+        * (epsilon_one_plus_delta + h_2[i] + _delta * h_1_next[i])).reciprocal();
+    return part_1 * part_2;
 }
 
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
