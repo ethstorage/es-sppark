@@ -54,3 +54,11 @@ const std::vector<const gpu_t*>& all_gpus()
 
 extern "C" bool cuda_available()
 {   return gpus_t::all().size() != 0;   }
+
+extern "C" void cuda_get_info(int id, unsigned long long* max_memory, unsigned long long* max_threading)
+{
+    auto& gpu = select_gpu(id);
+    auto& props = gpu.props();
+    *max_memory = props.totalGlobalMem;
+    *max_threading = props.maxThreadsDim[0] * props.maxGridSize[0];
+}

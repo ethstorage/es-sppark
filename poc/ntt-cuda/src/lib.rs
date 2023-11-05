@@ -4,6 +4,28 @@
 
 sppark::cuda_error!();
 
+#[macro_use]
+extern crate lazy_static;
+
+lazy_static! {
+    /// The default GPU device ID
+    static ref DEFAULT_GPU: usize = 0;
+
+    static ref DEFAULT_GPU_MAX: (u64, u64) = {
+        let id = *DEFAULT_GPU;
+        let mut max_memory: u64 = 0;
+        let mut max_threading: u64 = 0;
+        unsafe { cuda_get_info(id as i32, &mut max_memory, &mut max_threading) };
+        (max_memory, max_threading)
+    };
+
+    static ref DEFAULT_GPU_MAX_MEMORY: u64 = DEFAULT_GPU_MAX.0;
+    static ref DEFAULT_GPU_MAX_THREADING: u64 = DEFAULT_GPU_MAX.1;
+
+    // Reserve 512MB memory for each GPU
+    static ref MEMORY_RESERVE: u64 = 512 * 1024 * 1024;
+}
+
 #[repr(C)]
 pub enum NTTInputOutputOrder {
     NN = 0,
@@ -38,7 +60,7 @@ extern "C" {
 extern "C" {
     fn compute_quotient_term(
         device_id: usize,
-        lg_domain_size: u32,
+        domain_size: usize,
         out: *mut core::ffi::c_void,
         w_l: *const core::ffi::c_void,
         w_r: *const core::ffi::c_void,
@@ -114,14 +136,68 @@ extern "C" {
     ) -> cuda::Error;
 }
 
+extern "C" {
+    fn cuda_get_info(id: i32, max_memory: *mut u64, max_threading: *mut u64);
+}
+
+// Helper function to floor a number to the nearest power of 2
+#[allow(unused)]
+fn floor_pow2(n: usize) -> usize {
+    if n == 0 {
+        return 0;
+    }
+
+    let mut n = n;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    if std::mem::size_of::<usize>() == 8 {
+        n |= n >> 32;
+    }
+    n = n - (n >> 1);
+
+    n
+}
+
+macro_rules! check_len {
+    ($len:expr, $device_id:expr, $T:expr) => {
+        if ($len & ($len - 1)) != 0 {
+            panic!("inout.len() is not power of 2");
+        }
+
+        // Available memory
+        let gpu_memory = {
+            let gpu_mem = if $device_id != *DEFAULT_GPU {
+                get_cuda_info($device_id as i32).0
+            } else {
+                *DEFAULT_GPU_MAX_MEMORY
+            };
+            gpu_mem - *MEMORY_RESERVE
+        };
+
+        // Thread number
+        let thread_num = if $device_id != *DEFAULT_GPU {
+            get_cuda_info($device_id as i32).1
+        } else {
+            *DEFAULT_GPU_MAX_THREADING
+        };
+
+        // Single size of T
+        let size_of_t = std::mem::size_of::<T>();
+
+        // FFT must be done within one round
+        assert!($len * size_of_t <= gpu_memory as usize);
+        assert!($len <= thread_num as usize);
+    };
+}
 
 /// Compute an in-place NTT on the input data.
 #[allow(non_snake_case)]
 pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -143,9 +219,7 @@ pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
 #[allow(non_snake_case)]
 pub fn iNTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -170,9 +244,7 @@ pub fn coset_NTT<T>(
     order: NTTInputOutputOrder,
 ) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -197,9 +269,7 @@ pub fn coset_iNTT<T>(
     order: NTTInputOutputOrder,
 ) {
     let len = inout.len();
-    if (len & (len - 1)) != 0 {
-        panic!("inout.len() is not power of 2");
-    }
+    check_len!(len, device_id, T);
 
     let err = unsafe {
         compute_ntt(
@@ -260,13 +330,6 @@ pub fn quotient_term_gpu<T>(
 ) {
     // First check whether majority of the vectors have the same length
     let aux = vec![
-        w_l.len(),
-        w_r.len(),
-        w_4.len(),
-        z.len(),
-        z2.len(),
-        h1.len(),
-        table.len(),
         out.len(),
         w_o.len(),
         q_l.len(),
@@ -302,6 +365,20 @@ pub fn quotient_term_gpu<T>(
     }
     let len = aux[0];
 
+    let aux2 = vec![
+        w_l.len(),
+        w_r.len(),
+        w_4.len(),
+        z.len(),
+        z2.len(),
+        h1.len(),
+        table.len(),
+    ];
+    let all_same_length = aux2.iter().all(|v| *v == len + 8);
+    if !all_same_length {
+        panic!(" extended series must have the same length, len + 8 ");
+    }
+
     // challenges only have 5 elements
     assert!(challenges.len() == 5);
 
@@ -316,57 +393,120 @@ pub fn quotient_term_gpu<T>(
         panic!("inout.len() is not power of 2");
     }
 
-    // Call GPU kernel
-    let err = unsafe {
-        compute_quotient_term(
-            device_id,
-            len.trailing_zeros(),
-            out.as_mut_ptr() as *mut core::ffi::c_void,
-            w_l.as_ptr() as *const core::ffi::c_void,
-            w_r.as_ptr() as *const core::ffi::c_void,
-            w_o.as_ptr() as *const core::ffi::c_void,
-            w_4.as_ptr() as *const core::ffi::c_void,
-            q_l.as_ptr() as *const core::ffi::c_void,
-            q_r.as_ptr() as *const core::ffi::c_void,
-            q_o.as_ptr() as *const core::ffi::c_void,
-            q_4.as_ptr() as *const core::ffi::c_void,
-            q_hl.as_ptr() as *const core::ffi::c_void,
-            q_hr.as_ptr() as *const core::ffi::c_void,
-            q_h4.as_ptr() as *const core::ffi::c_void,
-            q_c.as_ptr() as *const core::ffi::c_void,
-            q_arith.as_ptr() as *const core::ffi::c_void,
-            q_m.as_ptr() as *const core::ffi::c_void,
-            r_s.as_ptr() as *const core::ffi::c_void,
-            l_s.as_ptr() as *const core::ffi::c_void,
-            fbms_s.as_ptr() as *const core::ffi::c_void,
-            vgca_s.as_ptr() as *const core::ffi::c_void,
-            pi.as_ptr() as *const core::ffi::c_void,
-            z.as_ptr() as *const core::ffi::c_void,
-            perm_linear.as_ptr() as *const core::ffi::c_void,
-            sigma_l.as_ptr() as *const core::ffi::c_void,
-            sigma_r.as_ptr() as *const core::ffi::c_void,
-            sigma_o.as_ptr() as *const core::ffi::c_void,
-            sigma_4.as_ptr() as *const core::ffi::c_void,
-            q_lookup.as_ptr() as *const core::ffi::c_void,
-            table.as_ptr() as *const core::ffi::c_void,
-            f.as_ptr() as *const core::ffi::c_void,
-            h1.as_ptr() as *const core::ffi::c_void,
-            h2.as_ptr() as *const core::ffi::c_void,
-            z2.as_ptr() as *const core::ffi::c_void,
-            l1.as_ptr() as *const core::ffi::c_void,
-            l1_alpha_sq.as_ptr() as *const core::ffi::c_void,
-            v_h_coset.as_ptr() as *const core::ffi::c_void,
-            challenges.as_ptr() as *const core::ffi::c_void,
-            curve_parameters.as_ptr() as *const core::ffi::c_void,
-            perm_parameters.as_ptr() as *const core::ffi::c_void,
-        )
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+
+    // Total memory required
+    let total_memory =
+        size_of_t * (aux.len() * len + aux2.len() * (len + 8) + 5 + 2 + 6);
+
+    // Available memory
+    let gpu_memory = {
+        let gpu_mem = if device_id != *DEFAULT_GPU {
+            get_cuda_info(device_id as i32).0
+        } else {
+            *DEFAULT_GPU_MAX_MEMORY
+        };
+        gpu_mem - *MEMORY_RESERVE
+    };
+    // TEST USE ONLY
+    // let gpu_memory = total_memory as u64 / 7;
+
+    // How many round if memory is not enough
+    let round = (total_memory as u64 + gpu_memory - 1) / gpu_memory;
+    let round = round as usize;
+
+    // Proper size (of buffer length)
+    let domain_size = (len + round - 1) / round as usize;
+
+    // domain_size is no need for 2^n, however total size should cover len
+    assert!(domain_size * round >= len);
+
+    // Thread number
+    let thread_num = if device_id != *DEFAULT_GPU {
+        get_cuda_info(device_id as i32).1
+    } else {
+        *DEFAULT_GPU_MAX_THREADING
     };
 
-    if err.code != 0 {
-        panic!("{}", String::from(err));
+    // Normally GPU threading is around 2^63 or so, simply calculation will
+    // leads to u64 overflow So we only need to check if domain size is
+    // smaller than thread number
+    assert!(domain_size <= thread_num as usize);
+
+    println!("buffer size {}, total memory needed {} bytes, gpu memory available {} bytes, domain_size: {}, round: {}", len, total_memory, gpu_memory, domain_size, len / domain_size);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+        let extend_end = end + 8;
+
+        println!(
+            "round {}, start {}, end {}, extend_end {}",
+            i, start, end, extend_end
+        );
+        // Simple memory sanitizer
+        {
+            let _ = w_l[start];
+            let _ = w_r[end - 1];
+            let _ = table[end];
+            let _ = w_4[extend_end - 1];
+        }
+
+        // Call GPU kernel
+        let err = unsafe {
+            compute_quotient_term(
+                device_id,
+                end - start,
+                out[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                w_l[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                w_r[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                w_o[start..end].as_ptr() as *const core::ffi::c_void,
+                w_4[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                q_l[start..end].as_ptr() as *const core::ffi::c_void,
+                q_r[start..end].as_ptr() as *const core::ffi::c_void,
+                q_o[start..end].as_ptr() as *const core::ffi::c_void,
+                q_4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_hl[start..end].as_ptr() as *const core::ffi::c_void,
+                q_hr[start..end].as_ptr() as *const core::ffi::c_void,
+                q_h4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_c[start..end].as_ptr() as *const core::ffi::c_void,
+                q_arith[start..end].as_ptr() as *const core::ffi::c_void,
+                q_m[start..end].as_ptr() as *const core::ffi::c_void,
+                r_s[start..end].as_ptr() as *const core::ffi::c_void,
+                l_s[start..end].as_ptr() as *const core::ffi::c_void,
+                fbms_s[start..end].as_ptr() as *const core::ffi::c_void,
+                vgca_s[start..end].as_ptr() as *const core::ffi::c_void,
+                pi[start..end].as_ptr() as *const core::ffi::c_void,
+                z[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                perm_linear[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_l[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_r[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_o[start..end].as_ptr() as *const core::ffi::c_void,
+                sigma_4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_lookup[start..end].as_ptr() as *const core::ffi::c_void,
+                table[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                f[start..end].as_ptr() as *const core::ffi::c_void,
+                h1[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                h2[start..end].as_ptr() as *const core::ffi::c_void,
+                z2[start..extend_end].as_ptr() as *const core::ffi::c_void,
+                l1[start..end].as_ptr() as *const core::ffi::c_void,
+                l1_alpha_sq[start..end].as_ptr() as *const core::ffi::c_void,
+                v_h_coset[start..end].as_ptr() as *const core::ffi::c_void,
+                challenges.as_ptr() as *const core::ffi::c_void,
+                curve_parameters.as_ptr() as *const core::ffi::c_void,
+                perm_parameters.as_ptr() as *const core::ffi::c_void,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
     }
 }
-
 
 pub fn product_argument_gpu<T>(
     device_id: usize,
@@ -382,10 +522,19 @@ pub fn product_argument_gpu<T>(
     gate_wire3: &[T],
     ks: &[T],
     beta: T,
-    gamma: T
+    gamma: T,
 ) {
-    let aux = vec![out.len(), root.len(), gate_sigma0.len(), gate_sigma1.len(), gate_sigma2.len(), gate_sigma3.len(),
-        gate_wire0.len(), gate_wire1.len(), gate_wire2.len(), gate_wire3.len(),
+    let aux = vec![
+        out.len(),
+        root.len(),
+        gate_sigma0.len(),
+        gate_sigma1.len(),
+        gate_sigma2.len(),
+        gate_sigma3.len(),
+        gate_wire0.len(),
+        gate_wire1.len(),
+        gate_wire2.len(),
+        gate_wire3.len(),
     ];
 
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
@@ -422,7 +571,6 @@ pub fn product_argument_gpu<T>(
     }
 }
 
-
 pub fn lookup_product_argument_gpu<T>(
     device_id: usize,
     out: &mut [T],
@@ -433,9 +581,16 @@ pub fn lookup_product_argument_gpu<T>(
     h_1_next: &[T],
     h_2: &[T],
     delta: T,
-    epsilon: T
+    epsilon: T,
 ) {
-    let aux = vec![f.len(), t.len(), t_next.len(), h_1.len(), h_1_next.len(), h_2.len()];
+    let aux = vec![
+        f.len(),
+        t.len(),
+        t_next.len(),
+        h_1.len(),
+        h_1_next.len(),
+        h_2.len(),
+    ];
 
     let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
@@ -465,4 +620,11 @@ pub fn lookup_product_argument_gpu<T>(
     if err.code != 0 {
         panic!("{}", String::from(err));
     }
+}
+
+pub fn get_cuda_info(device_id: i32) -> (u64, u64) {
+    let mut max_memory: u64 = 0;
+    let mut max_threading: u64 = 0;
+    unsafe { cuda_get_info(device_id, &mut max_memory, &mut max_threading) };
+    (max_memory, max_threading)
 }

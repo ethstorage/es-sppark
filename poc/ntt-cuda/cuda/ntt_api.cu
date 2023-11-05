@@ -34,12 +34,12 @@ RustError compute_ntt(size_t device_id, fr_t* inout, uint32_t lg_domain_size,
 }
 
 extern "C"
-RustError compute_quotient_term(size_t device_id, uint32_t lg_domain_size,
+RustError compute_quotient_term(size_t device_id, size_t domain_size,
                                   fr_t* out TOTAL_ARGUMENT)
 {
     auto& gpu = select_gpu(device_id);
 
-    return ARITHMETIC::quotient_poly_gpu(gpu, lg_domain_size, out TOTAL_PARAMETER);
+    return ARITHMETIC::quotient_poly_gpu(gpu, domain_size, out TOTAL_PARAMETER);
 }
 
 extern "C"

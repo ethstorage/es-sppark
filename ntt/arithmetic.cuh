@@ -19,26 +19,69 @@
 
 #define MAX_THREAD_SIZE 1024
 
+#define EVAL_LIST(X)  \
+    X(w_o)            \
+    X(q_l)            \
+    X(q_r)            \
+    X(q_o)            \
+    X(q_4)            \
+    X(q_hl)           \
+    X(q_hr)           \
+    X(q_h4)           \
+    X(q_c)            \
+    X(q_arith)        \
+    X(q_m)            \
+    X(r_s)            \
+    X(l_s)            \
+    X(fbsm_s)         \
+    X(vgca_s)         \
+    X(pi)             \
+    X(perm_linear)    \
+    X(sigma_l)        \
+    X(sigma_r)        \
+    X(sigma_o)        \
+    X(sigma_4)        \
+    X(q_lookup)       \
+    X(f)              \
+    X(h2)             \
+    X(l1)             \
+    X(l1_alpha_sq)    \
+    X(v_h_coset)
+
+#define EXTENDED_LIST(X) \
+    X(w_l)               \
+    X(w_r)               \
+    X(w_4)               \
+    X(z)                 \
+    X(z2)                \
+    X(table)             \
+    X(h1)
+
 class ARITHMETIC {
 
 public:
-    static RustError quotient_poly_gpu(const gpu_t& gpu, uint32_t lg_domain_size, fr_t* out
-                                     TOTAL_ARGUMENT)
+    static RustError quotient_poly_gpu(const gpu_t& gpu, size_t domain_size, fr_t* out
+                                       TOTAL_ARGUMENT)
     {
-        if (lg_domain_size == 0)
+        if (domain_size == 0)
             return RustError{cudaSuccess};
 
         try {
             gpu.select();
 
-            size_t domain_size = (size_t)1 << lg_domain_size;
-
-#define MAKE_DEV_PTR(var) dev_ptr_t<fr_t> d_##var{domain_size, gpu};
+            // For normal length buffer
+#define MAKE_DEV_PTR(var) dev_ptr_t<fr_t> d_##var{domain_size, gpu}; 
 #define MAKE_HOST2DEVICE(var) gpu.HtoD(&d_##var[0], var, domain_size);
-#define MAKE_KERNEL_PARAMETER(var) , d_##var
 
-            POINTER_LIST(MAKE_DEV_PTR);
-            POINTER_LIST(MAKE_HOST2DEVICE);
+            EVAL_LIST(MAKE_DEV_PTR);
+            EVAL_LIST(MAKE_HOST2DEVICE);
+
+            // For extended length buffer
+#define MAKE_DEV_PTR_EXTEND(var) dev_ptr_t<fr_t> d_##var{domain_size+8, gpu}; 
+#define MAKE_HOST2DEVICE_EXTEND(var) gpu.HtoD(&d_##var[0], var, domain_size+8);
+
+            EXTENDED_LIST(MAKE_DEV_PTR_EXTEND);
+            EXTENDED_LIST(MAKE_HOST2DEVICE_EXTEND);
 
             // We only have 5 challenges
             // Because it is associated with Macro, if you want to change it name
@@ -60,7 +103,8 @@ public:
             size_t thread_size = domain_size <= MAX_THREAD_SIZE ? domain_size : MAX_THREAD_SIZE;
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
-            quotient_poly_kernel<<<block_size, thread_size, 0, gpu>>>(lg_domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
+#define MAKE_KERNEL_PARAMETER(var) , d_##var
+            quotient_poly_kernel<<<block_size, thread_size, 0, gpu>>>(domain_size, d_out POINTER_LIST(MAKE_KERNEL_PARAMETER)
                                                                             AUX_LIST(MAKE_KERNEL_PARAMETER));
 
             auto err = cudaGetLastError();
@@ -212,5 +256,9 @@ public:
 #undef MAKE_DEV_PTR
 #undef MAKE_HOST2DEVICE
 #undef MAKE_KERNEL_PARAMETER
+#undef MAKE_DEV_PTR_EXTEND
+#undef MAKE_HOST2DEVICE_EXTEND
+#undef EVAL_LIST
+#undef EXTENDED_LIST
 #endif
 #endif
