@@ -60,4 +60,13 @@ RustError compute_lookup_product_argument(size_t device_id, uint32_t lg_domain_s
     return ARITHMETIC::lookup_product_argument_gpu(gpu, lg_domain_size, out LOOKUP_PRODUCT_PARAMETER);
 }
 
+extern "C"
+RustError compute_linear_poly(size_t device_id, uint32_t lg_domain_size,
+                                  fr_t* out LINEAR_POLY_ARGUMENT)
+{
+    auto& gpu = select_gpu(device_id);
+
+    return ARITHMETIC::linear_poly_gpu(gpu, lg_domain_size, out LINEAR_POLY_PARAMETER);
+}
+
 #endif

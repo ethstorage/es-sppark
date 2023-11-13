@@ -141,6 +141,26 @@
 #define LOOKUP_PRODUCT_PARAMETER \
     LOOKUP_PRODUCT_POINTER_LIST(MAKE_PARAMETER) LOOKUP_PRODUCT_AUX_LIST(MAKE_PARAMETER)
 
+#define LINEAR_POLY_POINTER_LIST(X) \
+    X(q_m) \
+    X(q_l) \
+    X(q_r) \
+    X(q_o) \
+    X(q_4) \
+    X(q_hl) \
+    X(q_hr) \
+    X(q_h4) \
+    X(q_c) \
+
+#define LINEAR_POLY_AUX_LIST(X) \    
+    X(wit_vals) \
+
+#define LINEAR_POLY_ARGUMENT \
+    LINEAR_POLY_POINTER_LIST(MAKE_PTR_ARGUMENT) LINEAR_POLY_AUX_LIST(MAKE_PTR_ARGUMENT)
+
+#define LINEAR_POLY_PARAMETER \
+    LINEAR_POLY_POINTER_LIST(MAKE_PARAMETER) LINEAR_POLY_AUX_LIST(MAKE_PARAMETER)
+
 /*-------------------------GATE SAT---------------------------------------*/
 __device__ __forceinline__ fr_t compute_quotient_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
@@ -426,6 +446,47 @@ __device__ __forceinline__ fr_t lookup_product_argment(size_t i, size_t domain_s
     return part_1 * part_2;
 }
 
+/*--------------------------------------LINEAR POLY--------------------------------------------*/
+__device__ __forceinline__ fr_t linear_poly_arithmetic(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t b_eval = wit_vals[1];
+    fr_t c_eval = wit_vals[2];
+    fr_t d_eval = wit_vals[3];
+    fr_t q_arith_eval = wit_vals[4];
+    fr_t result = (
+        q_m[i] * a_eval * b_eval
+        + q_l[i] * a_eval 
+        + q_r[i] * b_eval
+        + q_o[i] * c_eval
+        + q_4[i] * d_eval
+        + q_hl[i] * POW_SBOX(a_eval)
+        + q_hr[i] * POW_SBOX(b_eval)
+        + q_h4[i] * POW_SBOX(d_eval)
+        + q_c[i]
+    ) * q_arith_eval;
+    return result;
+}
+
+// deprecated because this term actually is zero
+__device__ __forceinline__ fr_t linear_poly_range(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    // fr_t a_eval = wit_vals[0];
+    // fr_t b_eval = wit_vals[1];
+    // fr_t c_eval = wit_vals[2];
+    // fr_t d_eval = wit_vals[3];
+    // fr_t d_next_val = custom_evals[8];
+    // fr_t separation_challenge = challenges[0];
+    // fr_t kappa = SQAURE(separation_challenge);
+    // fr_t kappa_sq = SQAURE(kappa);
+    // fr_t kappa_cu = kappa_sq * kappa;
+    // fr_t b_1 = delta(c_eval - FOUR * d_eval);
+    // fr_t b_2 = delta(b_eval - FOUR * c_eval) * kappa;
+    // fr_t b_3 = delta(a_eval - FOUR * b_eval) * kappa_sq;
+    // fr_t b_4 = delta(d_next_val - FOUR * a_eval) * kappa_cu;
+
+    // return range_sel[i] * (b_1 + b_2 + b_3 + b_4) * separation_challenge;
+}
+
+
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void quotient_poly_kernel(const size_t domain_size, fr_t* out
@@ -482,6 +543,23 @@ void lookup_product_argment_kernel(const uint lg_domain_size, fr_t* out
     }
 
     out[tid] =  lookup_product_argment(tid, domain_size LOOKUP_PRODUCT_PARAMETER);
+}
+
+__launch_bounds__(MAX_THREAD_NUM, 1) __global__
+void linear_poly_kernel(const uint lg_domain_size, fr_t* out
+                                LINEAR_POLY_ARGUMENT)
+{
+#if (__CUDACC_VER_MAJOR__-0) >= 11
+    __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
+#endif
+    uint domain_size = 1 << lg_domain_size;
+    const index_t tid = threadIdx.x + blockDim.x * (index_t)blockIdx.x;
+
+    // out of range, just return
+    if (tid > domain_size) {
+        return;
+    }
+    out[tid] = linear_poly_arithmetic(tid, domain_size LINEAR_POLY_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM

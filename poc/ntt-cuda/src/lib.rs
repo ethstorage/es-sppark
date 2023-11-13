@@ -134,6 +134,28 @@ extern "C" {
         delta_arr: *const core::ffi::c_void,
         epsilon_arr: *const core::ffi::c_void,
     ) -> cuda::Error;
+    
+    fn compute_linear_poly(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        q_m: *const core::ffi::c_void,
+        q_l: *const core::ffi::c_void,
+        q_r: *const core::ffi::c_void,
+        q_o: *const core::ffi::c_void,
+        q_4: *const core::ffi::c_void,
+        q_hl: *const core::ffi::c_void,
+        q_hr: *const core::ffi::c_void,
+        q_h4: *const core::ffi::c_void,
+        q_c: *const core::ffi::c_void,
+        wit_vals: *const core::ffi::c_void,
+        range_sel: *const core::ffi::c_void,
+        logic_sel: *const core::ffi::c_void,
+        fixed_group_add_sel: *const core::ffi::c_void,
+        variable_group_add_sel: *const core::ffi::c_void,
+        challenges: *const core::ffi::c_void,
+        custom_evals: *const core::ffi::c_void,
+    ) -> cuda::Error;
 }
 
 extern "C" {
@@ -627,4 +649,78 @@ pub fn get_cuda_info(device_id: i32) -> (u64, u64) {
     let mut max_threading: u64 = 0;
     unsafe { cuda_get_info(device_id, &mut max_memory, &mut max_threading) };
     (max_memory, max_threading)
+}
+
+// for plonk linearisation_poly optimization
+pub fn linear_poly_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    q_m: &[T],
+    q_l: &[T],
+    q_r: &[T],
+    q_o: &[T],
+    q_4: &[T],
+    q_hl: &[T],
+    q_hr: &[T],
+    q_h4: &[T],
+    q_c: &[T],
+    range_sel: &[T],
+    logic_sel: &[T],
+    fixed_group_add_sel: &[T],
+    variable_group_add_sel: &[T],
+    challenges: &[T],
+    custom_evals: &[T],
+    wit_vals: &[T],
+) {
+    let aux = vec![
+        out.len(),
+        q_l.len(),
+        q_r.len(),
+        q_o.len(),
+        q_4.len(),
+        q_hl.len(),
+        q_hr.len(),
+        q_h4.len(),
+        q_c.len(),
+    ];
+
+    let all_same_length = aux.iter().all(|v| {
+        *v == aux[0]
+    });
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    assert!(wit_vals.len() == 5, "wit_vals must have 5 vals");
+
+    let len = aux[0];
+
+    let err = unsafe {
+        compute_linear_poly(
+            device_id,
+            len.trailing_zeros(),
+            out.as_mut_ptr() as *mut core::ffi::c_void,
+            q_m.as_ptr() as *const core::ffi::c_void,
+            q_l.as_ptr() as *const core::ffi::c_void,
+            q_r.as_ptr() as *const core::ffi::c_void,
+            q_o.as_ptr() as *const core::ffi::c_void,
+            q_4.as_ptr() as *const core::ffi::c_void,
+            q_hl.as_ptr() as *const core::ffi::c_void,
+            q_hr.as_ptr() as *const core::ffi::c_void,
+            q_h4.as_ptr() as *const core::ffi::c_void,
+            q_c.as_ptr() as *const core::ffi::c_void,
+            wit_vals.as_ptr() as *const core::ffi::c_void,
+            range_sel.as_ptr() as *const core::ffi::c_void,
+            logic_sel.as_ptr() as *const core::ffi::c_void,
+            fixed_group_add_sel.as_ptr() as *const core::ffi::c_void,
+            variable_group_add_sel.as_ptr() as *const core::ffi::c_void,
+            challenges.as_ptr() as *const core::ffi::c_void,
+            custom_evals.as_ptr() as *const core::ffi::c_void,
+
+        )
+    };
+
+    if err.code != 0 {
+        panic!("{}", String::from(err));
+    }
 }
