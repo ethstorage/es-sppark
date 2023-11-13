@@ -264,14 +264,14 @@ public:
             LINEAR_POLY_POINTER_LIST(MAKE_DEV_PTR);
             LINEAR_POLY_POINTER_LIST(MAKE_HOST2DEVICE);
 
-            // 5 wit_vals
-            // dev_ptr_t<fr_t> d_challenges{4, gpu};
-            // gpu.HtoD(&d_challenges[0], challenges, 4);
-            // dev_ptr_t<fr_t> d_custom_evals{9, gpu};
-            // gpu.HtoD(&d_custom_evals[0], custom_evals, 9);
+            // vals of size smaller than domain_size
             dev_ptr_t<fr_t> d_wit_vals{5, gpu};
             gpu.HtoD(&d_wit_vals[0], wit_vals, 5);
-
+            dev_ptr_t<fr_t> d_perm_vals{9, gpu};
+            gpu.HtoD(&d_perm_vals[0], perm_vals, 9);
+            dev_ptr_t<uint64_t> d_power{1, gpu};
+            gpu.HtoD(&d_power[0], power, 1);
+            
             dev_ptr_t<fr_t> d_out{domain_size, gpu};
 
             // First check if it could be stored inside one block
@@ -279,7 +279,7 @@ public:
             size_t block_size = (domain_size + thread_size - 1) / thread_size;
 
             linear_poly_kernel<<<block_size, thread_size, 0, gpu>>>(
-                lg_domain_size, d_out LINEAR_POLY_POINTER_LIST(MAKE_KERNEL_PARAMETER) LINEAR_POLY_AUX_LIST(MAKE_KERNEL_PARAMETER));
+                lg_domain_size, d_out LINEAR_POLY_POINTER_LIST(MAKE_KERNEL_PARAMETER) LINEAR_POLY_AUX_LIST(MAKE_KERNEL_PARAMETER), d_power);
 
             auto err = cudaGetLastError();
             if (err != cudaSuccess) {

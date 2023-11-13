@@ -134,7 +134,7 @@ extern "C" {
         delta_arr: *const core::ffi::c_void,
         epsilon_arr: *const core::ffi::c_void,
     ) -> cuda::Error;
-    
+
     fn compute_linear_poly(
         device_id: usize,
         lg_domain_size: u32,
@@ -148,13 +148,11 @@ extern "C" {
         q_hr: *const core::ffi::c_void,
         q_h4: *const core::ffi::c_void,
         q_c: *const core::ffi::c_void,
+        z_poly: *const core::ffi::c_void,
+        fourth_sigma: *const core::ffi::c_void,
         wit_vals: *const core::ffi::c_void,
-        range_sel: *const core::ffi::c_void,
-        logic_sel: *const core::ffi::c_void,
-        fixed_group_add_sel: *const core::ffi::c_void,
-        variable_group_add_sel: *const core::ffi::c_void,
-        challenges: *const core::ffi::c_void,
-        custom_evals: *const core::ffi::c_void,
+        perm_vals: *const core::ffi::c_void,
+        power: *const u64,
     ) -> cuda::Error;
 }
 
@@ -664,13 +662,11 @@ pub fn linear_poly_gpu<T>(
     q_hr: &[T],
     q_h4: &[T],
     q_c: &[T],
-    range_sel: &[T],
-    logic_sel: &[T],
-    fixed_group_add_sel: &[T],
-    variable_group_add_sel: &[T],
-    challenges: &[T],
-    custom_evals: &[T],
+    z_poly: &[T],
+    fourth_sigma: &[T],
     wit_vals: &[T],
+    perm_vals: &[T],
+    power: &[u64],
 ) {
     let aux = vec![
         out.len(),
@@ -684,9 +680,7 @@ pub fn linear_poly_gpu<T>(
         q_c.len(),
     ];
 
-    let all_same_length = aux.iter().all(|v| {
-        *v == aux[0]
-    });
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
     if !all_same_length {
         panic!(" input series must have the same length ");
     }
@@ -709,14 +703,11 @@ pub fn linear_poly_gpu<T>(
             q_hr.as_ptr() as *const core::ffi::c_void,
             q_h4.as_ptr() as *const core::ffi::c_void,
             q_c.as_ptr() as *const core::ffi::c_void,
+            z_poly.as_ptr() as *const core::ffi::c_void,
+            fourth_sigma.as_ptr() as *const core::ffi::c_void,
             wit_vals.as_ptr() as *const core::ffi::c_void,
-            range_sel.as_ptr() as *const core::ffi::c_void,
-            logic_sel.as_ptr() as *const core::ffi::c_void,
-            fixed_group_add_sel.as_ptr() as *const core::ffi::c_void,
-            variable_group_add_sel.as_ptr() as *const core::ffi::c_void,
-            challenges.as_ptr() as *const core::ffi::c_void,
-            custom_evals.as_ptr() as *const core::ffi::c_void,
-
+            perm_vals.as_ptr() as *const core::ffi::c_void,
+            power.as_ptr() as *const u64,
         )
     };
 

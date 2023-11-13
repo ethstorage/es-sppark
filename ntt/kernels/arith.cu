@@ -151,15 +151,18 @@
     X(q_hr) \
     X(q_h4) \
     X(q_c) \
+    X(z_poly) \
+    X(fourth_sigma) \
 
-#define LINEAR_POLY_AUX_LIST(X) \    
+#define LINEAR_POLY_AUX_LIST(X) \
     X(wit_vals) \
+    X(perm_vals) \
 
 #define LINEAR_POLY_ARGUMENT \
-    LINEAR_POLY_POINTER_LIST(MAKE_PTR_ARGUMENT) LINEAR_POLY_AUX_LIST(MAKE_PTR_ARGUMENT)
+    LINEAR_POLY_POINTER_LIST(MAKE_PTR_ARGUMENT) LINEAR_POLY_AUX_LIST(MAKE_PTR_ARGUMENT), const uint64_t* power 
 
 #define LINEAR_POLY_PARAMETER \
-    LINEAR_POLY_POINTER_LIST(MAKE_PARAMETER) LINEAR_POLY_AUX_LIST(MAKE_PARAMETER)
+    LINEAR_POLY_POINTER_LIST(MAKE_PARAMETER) LINEAR_POLY_AUX_LIST(MAKE_PARAMETER), power
 
 /*-------------------------GATE SAT---------------------------------------*/
 __device__ __forceinline__ fr_t compute_quotient_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
@@ -446,7 +449,7 @@ __device__ __forceinline__ fr_t lookup_product_argment(size_t i, size_t domain_s
     return part_1 * part_2;
 }
 
-/*--------------------------------------LINEAR POLY--------------------------------------------*/
+/*--------------------------------------LINEAR POLY: linear_poly_arithmetic--------------------------------------------*/
 __device__ __forceinline__ fr_t linear_poly_arithmetic(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
     fr_t a_eval = wit_vals[0];
     fr_t b_eval = wit_vals[1];
@@ -484,6 +487,107 @@ __device__ __forceinline__ fr_t linear_poly_range(size_t i, size_t domain_size L
     // fr_t b_4 = delta(d_next_val - FOUR * a_eval) * kappa_cu;
 
     // return range_sel[i] * (b_1 + b_2 + b_3 + b_4) * separation_challenge;
+}
+
+/*--------------------------------------LINEAR POLY: compute_lineariser_identity_range_check---------------------------------*/
+__device__ __forceinline__ fr_t compute_lineariser_identity_range_check(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t b_eval = wit_vals[1];
+    fr_t c_eval = wit_vals[2];
+    fr_t d_eval = wit_vals[3];
+    fr_t z_challenge = perm_vals[1];
+    fr_t alpha = perm_vals[2];
+    fr_t beta = perm_vals[3];
+    fr_t gamma = perm_vals[4];
+
+    fr_t beta_z = beta * z_challenge;
+    // a_eval + beta * z_challenge + gamma
+    fr_t a_0 = a_eval + beta_z;
+    a_0 += gamma;
+
+    // b_eval + beta * K1 * z_challenge + gamma
+    fr_t beta_z_k1 = K1 * beta_z;
+    fr_t a_1 = b_eval + beta_z_k1;
+    a_1 += gamma;
+
+    // c_eval + beta * K2 * z_challenge + gamma
+    fr_t beta_z_k2 = K2 * beta_z;
+    fr_t a_2 = c_eval + beta_z_k2;
+    a_2 += gamma;
+
+    // d_eval + beta * K3 * z_challenge + gamma
+    fr_t beta_z_k3 = K3 * beta_z;
+    fr_t a_3 = d_eval + beta_z_k3;
+    a_3 += gamma;
+
+    fr_t a = a_0 * a_1;
+    a *= a_2;
+    a *= a_3;
+    a *= alpha; 
+
+    return z_poly[i] * a;
+}
+
+/*--------------------------------------LINEAR POLY: compute_lineariser_copy_range_check---------------------------------*/
+__device__ __forceinline__ fr_t compute_lineariser_copy_range_check(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t b_eval = wit_vals[1];
+    fr_t c_eval = wit_vals[2];
+    fr_t alpha = perm_vals[2];
+    fr_t beta = perm_vals[3];
+    fr_t gamma = perm_vals[4];
+    fr_t sigma_1_eval = perm_vals[5];
+    fr_t sigma_2_eval = perm_vals[6];
+    fr_t sigma_3_eval = perm_vals[7];
+    fr_t z_eval = perm_vals[8];
+
+    // a_eval + beta * sigma_1 + gamma
+    fr_t beta_sigma_1 = beta * sigma_1_eval;
+    fr_t a_0 = a_eval + beta_sigma_1;
+    a_0 += gamma;
+
+    // b_eval + beta * sigma_2 + gamma
+    fr_t beta_sigma_2 = beta * sigma_2_eval;
+    fr_t a_1 = b_eval + beta_sigma_2;
+    a_1 += gamma;
+
+    // c_eval + beta * sigma_3 + gamma
+    fr_t beta_sigma_3 = beta * sigma_3_eval;
+    fr_t a_2 = c_eval + beta_sigma_3;
+    a_2 += gamma;
+
+    fr_t beta_z_eval = beta * z_eval;
+
+    fr_t a = a_0 * a_1 * a_2;
+    a *= beta_z_eval;
+    a *= alpha; // (a_eval + beta * sigma_1 + gamma)(b_eval + beta * sigma_2 +
+                // gamma)(c_eval + beta * sigma_3 + gamma) * beta * z_eval * alpha
+    fr_t result = fourth_sigma[i] * a;
+    return result.cneg(true);
+}
+
+/*--------------------------------------LINEAR POLY: compute_lineariser_check_is_one---------------------------------*/
+__device__ __forceinline__ fr_t compute_lineariser_check_is_one(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t z_challenge = perm_vals[1];
+    fr_t alpha = perm_vals[2];
+    fr_t beta = perm_vals[3];
+    fr_t gamma = perm_vals[4];
+    fr_t sigma_1_eval = perm_vals[5];
+    fr_t alpha_sq = SQAURE(alpha);
+
+    // a_eval + beta * sigma_1 + gamma
+    fr_t beta_sigma_1 = beta * sigma_1_eval;
+    fr_t a_0 = a_eval + beta_sigma_1;
+    a_0 += gamma;
+
+    fr_t m = perm_vals[0]; 
+    fr_t h = ONE;
+    fr_t v_0_inv = m;
+    const uint64_t p = power[0];
+    fr_t z_p = z_challenge^p;
+    fr_t l_1_z = (z_p - h) /v_0_inv / (z_challenge - h);
+    return z_poly[i] * (l_1_z * alpha_sq);
 }
 
 
@@ -559,7 +663,10 @@ void linear_poly_kernel(const uint lg_domain_size, fr_t* out
     if (tid > domain_size) {
         return;
     }
-    out[tid] = linear_poly_arithmetic(tid, domain_size LINEAR_POLY_PARAMETER);
+    out[tid] = linear_poly_arithmetic(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_lineariser_identity_range_check(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_lineariser_copy_range_check(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_lineariser_check_is_one(tid, domain_size LINEAR_POLY_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM
