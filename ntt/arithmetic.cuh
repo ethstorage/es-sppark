@@ -267,8 +267,8 @@ public:
             // vals of size smaller than domain_size
             dev_ptr_t<fr_t> d_wit_vals{5, gpu};
             gpu.HtoD(&d_wit_vals[0], wit_vals, 5);
-            dev_ptr_t<fr_t> d_perm_vals{9, gpu};
-            gpu.HtoD(&d_perm_vals[0], perm_vals, 9);
+            dev_ptr_t<fr_t> d_perm_vals{11, gpu};
+            gpu.HtoD(&d_perm_vals[0], perm_vals, 11);
             dev_ptr_t<uint64_t> d_power{1, gpu};
             gpu.HtoD(&d_power[0], power, 1);
             

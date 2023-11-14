@@ -153,6 +153,14 @@
     X(q_c) \
     X(z_poly) \
     X(fourth_sigma) \
+    X(t_1_poly) \
+    X(t_2_poly) \
+    X(t_3_poly) \
+    X(t_4_poly) \
+    X(t_5_poly) \
+    X(t_6_poly) \
+    X(t_7_poly) \
+    X(t_8_poly) \
 
 #define LINEAR_POLY_AUX_LIST(X) \
     X(wit_vals) \
@@ -585,9 +593,30 @@ __device__ __forceinline__ fr_t compute_lineariser_check_is_one(size_t i, size_t
     fr_t h = ONE;
     fr_t v_0_inv = m;
     const uint64_t p = power[0];
-    fr_t z_p = z_challenge^p;
-    fr_t l_1_z = (z_p - h) /v_0_inv / (z_challenge - h);
+    fr_t l_1_z = ((z_challenge^p) - h) /v_0_inv / (z_challenge - h);
     return z_poly[i] * (l_1_z * alpha_sq);
+}
+
+/*--------------------------------------LINEAR POLY: compute_quotient_tem---------------------------------*/
+__device__ __forceinline__ fr_t compute_quotient_tem(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t z_challenge_to_n = perm_vals[9];
+    fr_t vanishing_poly_eval = perm_vals[10];
+    fr_t z_2 = SQAURE(z_challenge_to_n);
+    fr_t z_3 = z_2 * z_challenge_to_n;
+    fr_t z_4 = z_3 * z_challenge_to_n;
+    fr_t z_5 = z_4 * z_challenge_to_n;
+    fr_t z_6 = z_5 * z_challenge_to_n;
+    fr_t z_7 = z_6 * z_challenge_to_n;
+    fr_t result = (t_1_poly[i] 
+        + t_2_poly[i]*z_challenge_to_n 
+        + t_3_poly[i]*z_2 
+        + t_4_poly[i]*z_3
+        + t_5_poly[i]*z_4
+        + t_6_poly[i]*z_5
+        + t_7_poly[i]*z_6
+        + t_8_poly[i]*z_7
+        ) * vanishing_poly_eval;
+    return result.cneg(true);
 }
 
 
@@ -666,7 +695,8 @@ void linear_poly_kernel(const uint lg_domain_size, fr_t* out
     out[tid] = linear_poly_arithmetic(tid, domain_size LINEAR_POLY_PARAMETER)
         + compute_lineariser_identity_range_check(tid, domain_size LINEAR_POLY_PARAMETER)
         + compute_lineariser_copy_range_check(tid, domain_size LINEAR_POLY_PARAMETER)
-        + compute_lineariser_check_is_one(tid, domain_size LINEAR_POLY_PARAMETER);
+        + compute_lineariser_check_is_one(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_quotient_tem(tid, domain_size LINEAR_POLY_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM
