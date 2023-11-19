@@ -478,25 +478,6 @@ __device__ __forceinline__ fr_t linear_poly_arithmetic(size_t i, size_t domain_s
     return result;
 }
 
-// deprecated because this term actually is zero
-__device__ __forceinline__ fr_t linear_poly_range(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
-    // fr_t a_eval = wit_vals[0];
-    // fr_t b_eval = wit_vals[1];
-    // fr_t c_eval = wit_vals[2];
-    // fr_t d_eval = wit_vals[3];
-    // fr_t d_next_val = custom_evals[8];
-    // fr_t separation_challenge = challenges[0];
-    // fr_t kappa = SQAURE(separation_challenge);
-    // fr_t kappa_sq = SQAURE(kappa);
-    // fr_t kappa_cu = kappa_sq * kappa;
-    // fr_t b_1 = delta(c_eval - FOUR * d_eval);
-    // fr_t b_2 = delta(b_eval - FOUR * c_eval) * kappa;
-    // fr_t b_3 = delta(a_eval - FOUR * b_eval) * kappa_sq;
-    // fr_t b_4 = delta(d_next_val - FOUR * a_eval) * kappa_cu;
-
-    // return range_sel[i] * (b_1 + b_2 + b_3 + b_4) * separation_challenge;
-}
-
 /*--------------------------------------LINEAR POLY: compute_lineariser_identity_range_check---------------------------------*/
 __device__ __forceinline__ fr_t compute_lineariser_identity_range_check(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
     fr_t a_eval = wit_vals[0];
@@ -571,6 +552,7 @@ __device__ __forceinline__ fr_t compute_lineariser_copy_range_check(size_t i, si
     a *= alpha; // (a_eval + beta * sigma_1 + gamma)(b_eval + beta * sigma_2 +
                 // gamma)(c_eval + beta * sigma_3 + gamma) * beta * z_eval * alpha
     fr_t result = fourth_sigma[i] * a;
+    // to negate a Fr
     return result.cneg(true);
 }
 
@@ -593,6 +575,7 @@ __device__ __forceinline__ fr_t compute_lineariser_check_is_one(size_t i, size_t
     fr_t h = ONE;
     fr_t v_0_inv = m;
     const uint64_t p = power[0];
+    // There is no explicit arithmetic precedence, so a brack must used for ^
     fr_t l_1_z = ((z_challenge^p) - h) /v_0_inv / (z_challenge - h);
     return z_poly[i] * (l_1_z * alpha_sq);
 }
@@ -616,6 +599,7 @@ __device__ __forceinline__ fr_t compute_quotient_tem(size_t i, size_t domain_siz
         + t_7_poly[i]*z_6
         + t_8_poly[i]*z_7
         ) * vanishing_poly_eval;
+    // to negate a Fr
     return result.cneg(true);
 }
 
