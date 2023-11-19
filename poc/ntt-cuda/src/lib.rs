@@ -134,6 +134,34 @@ extern "C" {
         delta_arr: *const core::ffi::c_void,
         epsilon_arr: *const core::ffi::c_void,
     ) -> cuda::Error;
+
+    fn compute_linear_poly(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        q_m: *const core::ffi::c_void,
+        q_l: *const core::ffi::c_void,
+        q_r: *const core::ffi::c_void,
+        q_o: *const core::ffi::c_void,
+        q_4: *const core::ffi::c_void,
+        q_hl: *const core::ffi::c_void,
+        q_hr: *const core::ffi::c_void,
+        q_h4: *const core::ffi::c_void,
+        q_c: *const core::ffi::c_void,
+        z_poly: *const core::ffi::c_void,
+        fourth_sigma: *const core::ffi::c_void,
+        t_1_poly: *const core::ffi::c_void,
+        t_2_poly: *const core::ffi::c_void,
+        t_3_poly: *const core::ffi::c_void,
+        t_4_poly: *const core::ffi::c_void,
+        t_5_poly: *const core::ffi::c_void,
+        t_6_poly: *const core::ffi::c_void,
+        t_7_poly: *const core::ffi::c_void,
+        t_8_poly: *const core::ffi::c_void,
+        wit_vals: *const core::ffi::c_void,
+        perm_vals: *const core::ffi::c_void,
+        power: *const u64,
+    ) -> cuda::Error;
 }
 
 extern "C" {
@@ -627,4 +655,87 @@ pub fn get_cuda_info(device_id: i32) -> (u64, u64) {
     let mut max_threading: u64 = 0;
     unsafe { cuda_get_info(device_id, &mut max_memory, &mut max_threading) };
     (max_memory, max_threading)
+}
+
+// for plonk linearisation_poly optimization
+pub fn linear_poly_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    q_m: &[T],
+    q_l: &[T],
+    q_r: &[T],
+    q_o: &[T],
+    q_4: &[T],
+    q_hl: &[T],
+    q_hr: &[T],
+    q_h4: &[T],
+    q_c: &[T],
+    z_poly: &[T],
+    fourth_sigma: &[T],
+    t_1_poly: &[T],
+    t_2_poly: &[T],
+    t_3_poly: &[T],
+    t_4_poly: &[T],
+    t_5_poly: &[T],
+    t_6_poly: &[T],
+    t_7_poly: &[T],
+    t_8_poly: &[T],
+    wit_vals: &[T],
+    perm_vals: &[T],
+    power: &[u64],
+) {
+    let aux = vec![
+        out.len(),
+        q_l.len(),
+        q_r.len(),
+        q_o.len(),
+        q_4.len(),
+        q_hl.len(),
+        q_hr.len(),
+        q_h4.len(),
+        q_c.len(),
+    ];
+
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    assert!(wit_vals.len() == 5, "wit_vals must have 5 vals");
+
+    let len = aux[0];
+
+    let err = unsafe {
+        compute_linear_poly(
+            device_id,
+            len.trailing_zeros(),
+            out.as_mut_ptr() as *mut core::ffi::c_void,
+            q_m.as_ptr() as *const core::ffi::c_void,
+            q_l.as_ptr() as *const core::ffi::c_void,
+            q_r.as_ptr() as *const core::ffi::c_void,
+            q_o.as_ptr() as *const core::ffi::c_void,
+            q_4.as_ptr() as *const core::ffi::c_void,
+            q_hl.as_ptr() as *const core::ffi::c_void,
+            q_hr.as_ptr() as *const core::ffi::c_void,
+            q_h4.as_ptr() as *const core::ffi::c_void,
+            q_c.as_ptr() as *const core::ffi::c_void,
+            z_poly.as_ptr() as *const core::ffi::c_void,
+            fourth_sigma.as_ptr() as *const core::ffi::c_void,
+            t_1_poly.as_ptr() as *const core::ffi::c_void,
+            t_2_poly.as_ptr() as *const core::ffi::c_void,
+            t_3_poly.as_ptr() as *const core::ffi::c_void,
+            t_4_poly.as_ptr() as *const core::ffi::c_void,
+            t_5_poly.as_ptr() as *const core::ffi::c_void,
+            t_6_poly.as_ptr() as *const core::ffi::c_void,
+            t_7_poly.as_ptr() as *const core::ffi::c_void,
+            t_8_poly.as_ptr() as *const core::ffi::c_void,
+            wit_vals.as_ptr() as *const core::ffi::c_void,
+            perm_vals.as_ptr() as *const core::ffi::c_void,
+            power.as_ptr() as *const u64,
+        )
+    };
+
+    if err.code != 0 {
+        panic!("{}", String::from(err));
+    }
 }

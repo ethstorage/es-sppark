@@ -141,6 +141,37 @@
 #define LOOKUP_PRODUCT_PARAMETER \
     LOOKUP_PRODUCT_POINTER_LIST(MAKE_PARAMETER) LOOKUP_PRODUCT_AUX_LIST(MAKE_PARAMETER)
 
+#define LINEAR_POLY_POINTER_LIST(X) \
+    X(q_m) \
+    X(q_l) \
+    X(q_r) \
+    X(q_o) \
+    X(q_4) \
+    X(q_hl) \
+    X(q_hr) \
+    X(q_h4) \
+    X(q_c) \
+    X(z_poly) \
+    X(fourth_sigma) \
+    X(t_1_poly) \
+    X(t_2_poly) \
+    X(t_3_poly) \
+    X(t_4_poly) \
+    X(t_5_poly) \
+    X(t_6_poly) \
+    X(t_7_poly) \
+    X(t_8_poly) \
+
+#define LINEAR_POLY_AUX_LIST(X) \
+    X(wit_vals) \
+    X(perm_vals) \
+
+#define LINEAR_POLY_ARGUMENT \
+    LINEAR_POLY_POINTER_LIST(MAKE_PTR_ARGUMENT) LINEAR_POLY_AUX_LIST(MAKE_PTR_ARGUMENT), const uint64_t* power 
+
+#define LINEAR_POLY_PARAMETER \
+    LINEAR_POLY_POINTER_LIST(MAKE_PARAMETER) LINEAR_POLY_AUX_LIST(MAKE_PARAMETER), power
+
 /*-------------------------GATE SAT---------------------------------------*/
 __device__ __forceinline__ fr_t compute_quotient_i(size_t i, size_t domain_size TOTAL_ARGUMENT)
 {
@@ -426,6 +457,153 @@ __device__ __forceinline__ fr_t lookup_product_argment(size_t i, size_t domain_s
     return part_1 * part_2;
 }
 
+/*--------------------------------------LINEAR POLY: linear_poly_arithmetic--------------------------------------------*/
+__device__ __forceinline__ fr_t linear_poly_arithmetic(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t b_eval = wit_vals[1];
+    fr_t c_eval = wit_vals[2];
+    fr_t d_eval = wit_vals[3];
+    fr_t q_arith_eval = wit_vals[4];
+    fr_t result = (
+        q_m[i] * a_eval * b_eval
+        + q_l[i] * a_eval 
+        + q_r[i] * b_eval
+        + q_o[i] * c_eval
+        + q_4[i] * d_eval
+        + q_hl[i] * POW_SBOX(a_eval)
+        + q_hr[i] * POW_SBOX(b_eval)
+        + q_h4[i] * POW_SBOX(d_eval)
+        + q_c[i]
+    ) * q_arith_eval;
+    return result;
+}
+
+/*--------------------------------------LINEAR POLY: compute_lineariser_identity_range_check---------------------------------*/
+__device__ __forceinline__ fr_t compute_lineariser_identity_range_check(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t b_eval = wit_vals[1];
+    fr_t c_eval = wit_vals[2];
+    fr_t d_eval = wit_vals[3];
+    fr_t z_challenge = perm_vals[1];
+    fr_t alpha = perm_vals[2];
+    fr_t beta = perm_vals[3];
+    fr_t gamma = perm_vals[4];
+
+    fr_t beta_z = beta * z_challenge;
+    // a_eval + beta * z_challenge + gamma
+    fr_t a_0 = a_eval + beta_z;
+    a_0 += gamma;
+
+    // b_eval + beta * K1 * z_challenge + gamma
+    fr_t beta_z_k1 = K1 * beta_z;
+    fr_t a_1 = b_eval + beta_z_k1;
+    a_1 += gamma;
+
+    // c_eval + beta * K2 * z_challenge + gamma
+    fr_t beta_z_k2 = K2 * beta_z;
+    fr_t a_2 = c_eval + beta_z_k2;
+    a_2 += gamma;
+
+    // d_eval + beta * K3 * z_challenge + gamma
+    fr_t beta_z_k3 = K3 * beta_z;
+    fr_t a_3 = d_eval + beta_z_k3;
+    a_3 += gamma;
+
+    fr_t a = a_0 * a_1;
+    a *= a_2;
+    a *= a_3;
+    a *= alpha; 
+
+    return z_poly[i] * a;
+}
+
+/*--------------------------------------LINEAR POLY: compute_lineariser_copy_range_check---------------------------------*/
+__device__ __forceinline__ fr_t compute_lineariser_copy_range_check(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t b_eval = wit_vals[1];
+    fr_t c_eval = wit_vals[2];
+    fr_t alpha = perm_vals[2];
+    fr_t beta = perm_vals[3];
+    fr_t gamma = perm_vals[4];
+    fr_t sigma_1_eval = perm_vals[5];
+    fr_t sigma_2_eval = perm_vals[6];
+    fr_t sigma_3_eval = perm_vals[7];
+    fr_t z_eval = perm_vals[8];
+
+    // a_eval + beta * sigma_1 + gamma
+    fr_t beta_sigma_1 = beta * sigma_1_eval;
+    fr_t a_0 = a_eval + beta_sigma_1;
+    a_0 += gamma;
+
+    // b_eval + beta * sigma_2 + gamma
+    fr_t beta_sigma_2 = beta * sigma_2_eval;
+    fr_t a_1 = b_eval + beta_sigma_2;
+    a_1 += gamma;
+
+    // c_eval + beta * sigma_3 + gamma
+    fr_t beta_sigma_3 = beta * sigma_3_eval;
+    fr_t a_2 = c_eval + beta_sigma_3;
+    a_2 += gamma;
+
+    fr_t beta_z_eval = beta * z_eval;
+
+    fr_t a = a_0 * a_1 * a_2;
+    a *= beta_z_eval;
+    a *= alpha; // (a_eval + beta * sigma_1 + gamma)(b_eval + beta * sigma_2 +
+                // gamma)(c_eval + beta * sigma_3 + gamma) * beta * z_eval * alpha
+    fr_t result = fourth_sigma[i] * a;
+    // to negate a Fr
+    return result.cneg(true);
+}
+
+/*--------------------------------------LINEAR POLY: compute_lineariser_check_is_one---------------------------------*/
+__device__ __forceinline__ fr_t compute_lineariser_check_is_one(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t a_eval = wit_vals[0];
+    fr_t z_challenge = perm_vals[1];
+    fr_t alpha = perm_vals[2];
+    fr_t beta = perm_vals[3];
+    fr_t gamma = perm_vals[4];
+    fr_t sigma_1_eval = perm_vals[5];
+    fr_t alpha_sq = SQAURE(alpha);
+
+    // a_eval + beta * sigma_1 + gamma
+    fr_t beta_sigma_1 = beta * sigma_1_eval;
+    fr_t a_0 = a_eval + beta_sigma_1;
+    a_0 += gamma;
+
+    fr_t m = perm_vals[0]; 
+    fr_t h = ONE;
+    fr_t v_0_inv = m;
+    const uint64_t p = power[0];
+    // There is no explicit arithmetic precedence, so a brack must used for ^
+    fr_t l_1_z = ((z_challenge^p) - h) /v_0_inv / (z_challenge - h);
+    return z_poly[i] * (l_1_z * alpha_sq);
+}
+
+/*--------------------------------------LINEAR POLY: compute_quotient_tem---------------------------------*/
+__device__ __forceinline__ fr_t compute_quotient_tem(size_t i, size_t domain_size LINEAR_POLY_ARGUMENT) {
+    fr_t z_challenge_to_n = perm_vals[9];
+    fr_t vanishing_poly_eval = perm_vals[10];
+    fr_t z_2 = SQAURE(z_challenge_to_n);
+    fr_t z_3 = z_2 * z_challenge_to_n;
+    fr_t z_4 = z_3 * z_challenge_to_n;
+    fr_t z_5 = z_4 * z_challenge_to_n;
+    fr_t z_6 = z_5 * z_challenge_to_n;
+    fr_t z_7 = z_6 * z_challenge_to_n;
+    fr_t result = (t_1_poly[i] 
+        + t_2_poly[i]*z_challenge_to_n 
+        + t_3_poly[i]*z_2 
+        + t_4_poly[i]*z_3
+        + t_5_poly[i]*z_4
+        + t_6_poly[i]*z_5
+        + t_7_poly[i]*z_6
+        + t_8_poly[i]*z_7
+        ) * vanishing_poly_eval;
+    // to negate a Fr
+    return result.cneg(true);
+}
+
+
 /*----------------------------------FINAL KERNEL FUNCTION---------------------------------------*/
 __launch_bounds__(MAX_THREAD_NUM, 1) __global__
 void quotient_poly_kernel(const size_t domain_size, fr_t* out
@@ -482,6 +660,27 @@ void lookup_product_argment_kernel(const uint lg_domain_size, fr_t* out
     }
 
     out[tid] =  lookup_product_argment(tid, domain_size LOOKUP_PRODUCT_PARAMETER);
+}
+
+__launch_bounds__(MAX_THREAD_NUM, 1) __global__
+void linear_poly_kernel(const uint lg_domain_size, fr_t* out
+                                LINEAR_POLY_ARGUMENT)
+{
+#if (__CUDACC_VER_MAJOR__-0) >= 11
+    __builtin_assume(lg_domain_size <= MAX_LG_DOMAIN_SIZE);
+#endif
+    uint domain_size = 1 << lg_domain_size;
+    const index_t tid = threadIdx.x + blockDim.x * (index_t)blockIdx.x;
+
+    // out of range, just return
+    if (tid > domain_size) {
+        return;
+    }
+    out[tid] = linear_poly_arithmetic(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_lineariser_identity_range_check(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_lineariser_copy_range_check(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_lineariser_check_is_one(tid, domain_size LINEAR_POLY_PARAMETER)
+        + compute_quotient_tem(tid, domain_size LINEAR_POLY_PARAMETER);
 }
 
 #undef MAX_THREAD_NUM
