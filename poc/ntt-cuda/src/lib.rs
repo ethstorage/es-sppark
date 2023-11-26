@@ -314,8 +314,11 @@ pub fn coset_NTT<T>(
     // Total memory required
     let total_memory = size_of_t * inout.len();
 
-    let (round, domain_size) =
-        compute_mem_segment(device_id, len, total_memory);
+    let (mut round, mut domain_size) = (0, 0);
+    if total_memory > 0 {
+        (round, domain_size) =
+            compute_mem_segment(device_id, len, total_memory);
+    }
 
     // Burden same GPU for now
     // Submit all buffer to same GPU in sequence
@@ -568,7 +571,7 @@ pub fn quotient_term_gpu<T>(
         //     "round {}, start {}, end {}, extend_end {}",
         //     i, start, end, extend_end
         // );
-        
+
         // Simple memory sanitizer
         {
             let _ = w_l[start];
