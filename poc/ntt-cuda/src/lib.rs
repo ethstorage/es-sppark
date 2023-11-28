@@ -217,6 +217,8 @@ macro_rules! check_len {
         let size_of_t = std::mem::size_of::<T>();
 
         // FFT must be done within one round
+        // DFT X_k = sum_{m=0}^{N-1} x_m * exp(-2*pi*i*m*k/N)
+        // One cannot do it in piecewise, X_k would be wrong then
         assert!($len * size_of_t <= gpu_memory as usize);
         assert!($len <= thread_num as usize);
     };
@@ -228,36 +230,19 @@ pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    // Single size of T
-    let size_of_t = std::mem::size_of::<T>();
+    let err = unsafe {
+        compute_ntt(
+            device_id,
+            inout.as_mut_ptr() as *mut core::ffi::c_void,
+            len.trailing_zeros(),
+            order,
+            NTTDirection::Forward,
+            NTTType::Standard,
+        )
+    };
 
-    // Total memory required
-    let total_memory = size_of_t * inout.len();
-
-    let (round, domain_size) =
-        compute_mem_segment(device_id, len, total_memory);
-
-    // Burden same GPU for now
-    // Submit all buffer to same GPU in sequence
-    for i in 0..round {
-        // Compute the start and end index
-        let start = i * domain_size;
-        let end = std::cmp::min((i + 1) * domain_size, len);
-
-        let err = unsafe {
-            compute_ntt(
-                device_id,
-                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
-                len.trailing_zeros(),
-                order,
-                NTTDirection::Forward,
-                NTTType::Standard,
-            )
-        };
-
-        if err.code != 0 {
-            panic!("{}", String::from(err));
-        }
+    if err.code != 0 {
+        panic!("{}", String::from(err));
     }
 }
 
@@ -267,36 +252,19 @@ pub fn iNTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    // Single size of T
-    let size_of_t = std::mem::size_of::<T>();
+    let err = unsafe {
+        compute_ntt(
+            device_id,
+            inout.as_mut_ptr() as *mut core::ffi::c_void,
+            len.trailing_zeros(),
+            order,
+            NTTDirection::Inverse,
+            NTTType::Standard,
+        )
+    };
 
-    // Total memory required
-    let total_memory = size_of_t * inout.len();
-
-    let (round, domain_size) =
-        compute_mem_segment(device_id, len, total_memory);
-
-    // Burden same GPU for now
-    // Submit all buffer to same GPU in sequence
-    for i in 0..round {
-        // Compute the start and end index
-        let start = i * domain_size;
-        let end = std::cmp::min((i + 1) * domain_size, len);
-
-        let err = unsafe {
-            compute_ntt(
-                device_id,
-                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
-                len.trailing_zeros(),
-                order,
-                NTTDirection::Inverse,
-                NTTType::Standard,
-            )
-        };
-
-        if err.code != 0 {
-            panic!("{}", String::from(err));
-        }
+    if err.code != 0 {
+        panic!("{}", String::from(err));
     }
 }
 
@@ -309,38 +277,19 @@ pub fn coset_NTT<T>(
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    // Single size of T
-    let size_of_t = std::mem::size_of::<T>();
-    // Total memory required
-    let total_memory = size_of_t * inout.len();
+    let err = unsafe {
+        compute_ntt(
+            device_id,
+            inout.as_mut_ptr() as *mut core::ffi::c_void,
+            len.trailing_zeros(),
+            order,
+            NTTDirection::Forward,
+            NTTType::Coset,
+        )
+    };
 
-    let (mut round, mut domain_size) = (0, 0);
-    if total_memory > 0 {
-        (round, domain_size) =
-            compute_mem_segment(device_id, len, total_memory);
-    }
-
-    // Burden same GPU for now
-    // Submit all buffer to same GPU in sequence
-    for i in 0..round {
-        // Compute the start and end index
-        let start = i * domain_size;
-        let end = std::cmp::min((i + 1) * domain_size, len);
-
-        let err = unsafe {
-            compute_ntt(
-                device_id,
-                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
-                len.trailing_zeros(),
-                order,
-                NTTDirection::Forward,
-                NTTType::Coset,
-            )
-        };
-
-        if err.code != 0 {
-            panic!("{}", String::from(err));
-        }
+    if err.code != 0 {
+        panic!("{}", String::from(err));
     }
 }
 
@@ -353,36 +302,19 @@ pub fn coset_iNTT<T>(
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    // Single size of T
-    let size_of_t = std::mem::size_of::<T>();
+    let err = unsafe {
+        compute_ntt(
+            device_id,
+            inout.as_mut_ptr() as *mut core::ffi::c_void,
+            len.trailing_zeros(),
+            order,
+            NTTDirection::Inverse,
+            NTTType::Coset,
+        )
+    };
 
-    // Total memory required
-    let total_memory = size_of_t * inout.len();
-
-    let (round, domain_size) =
-        compute_mem_segment(device_id, len, total_memory);
-
-    // Burden same GPU for now
-    // Submit all buffer to same GPU in sequence
-    for i in 0..round {
-        // Compute the start and end index
-        let start = i * domain_size;
-        let end = std::cmp::min((i + 1) * domain_size, len);
-
-        let err = unsafe {
-            compute_ntt(
-                device_id,
-                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
-                len.trailing_zeros(),
-                order,
-                NTTDirection::Inverse,
-                NTTType::Coset,
-            )
-        };
-
-        if err.code != 0 {
-            panic!("{}", String::from(err));
-        }
+    if err.code != 0 {
+        panic!("{}", String::from(err));
     }
 }
 
