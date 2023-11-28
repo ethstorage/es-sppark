@@ -26,6 +26,7 @@ lazy_static! {
     static ref MEMORY_RESERVE: u64 = 512 * 1024 * 1024;
 }
 
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub enum NTTInputOutputOrder {
     NN = 0,
@@ -103,6 +104,68 @@ extern "C" {
 }
 
 extern "C" {
+    fn compute_product_argument(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        root: *const core::ffi::c_void,
+        gate_sigma0: *const core::ffi::c_void,
+        gate_sigma1: *const core::ffi::c_void,
+        gate_sigma2: *const core::ffi::c_void,
+        gate_sigma3: *const core::ffi::c_void,
+        gate_wire0: *const core::ffi::c_void,
+        gate_wire1: *const core::ffi::c_void,
+        gate_wire2: *const core::ffi::c_void,
+        gate_wire3: *const core::ffi::c_void,
+        ks: *const core::ffi::c_void,
+        beta: *const core::ffi::c_void,
+        gamma: *const core::ffi::c_void,
+    ) -> cuda::Error;
+
+    fn compute_lookup_product_argument(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        f: *const core::ffi::c_void,
+        t: *const core::ffi::c_void,
+        t_next: *const core::ffi::c_void,
+        h_1: *const core::ffi::c_void,
+        h_1_next: *const core::ffi::c_void,
+        h_2: *const core::ffi::c_void,
+        delta_arr: *const core::ffi::c_void,
+        epsilon_arr: *const core::ffi::c_void,
+    ) -> cuda::Error;
+
+    fn compute_linear_poly(
+        device_id: usize,
+        lg_domain_size: u32,
+        out: *mut core::ffi::c_void,
+        q_m: *const core::ffi::c_void,
+        q_l: *const core::ffi::c_void,
+        q_r: *const core::ffi::c_void,
+        q_o: *const core::ffi::c_void,
+        q_4: *const core::ffi::c_void,
+        q_hl: *const core::ffi::c_void,
+        q_hr: *const core::ffi::c_void,
+        q_h4: *const core::ffi::c_void,
+        q_c: *const core::ffi::c_void,
+        z_poly: *const core::ffi::c_void,
+        fourth_sigma: *const core::ffi::c_void,
+        t_1_poly: *const core::ffi::c_void,
+        t_2_poly: *const core::ffi::c_void,
+        t_3_poly: *const core::ffi::c_void,
+        t_4_poly: *const core::ffi::c_void,
+        t_5_poly: *const core::ffi::c_void,
+        t_6_poly: *const core::ffi::c_void,
+        t_7_poly: *const core::ffi::c_void,
+        t_8_poly: *const core::ffi::c_void,
+        wit_vals: *const core::ffi::c_void,
+        perm_vals: *const core::ffi::c_void,
+        power: *const u64,
+    ) -> cuda::Error;
+}
+
+extern "C" {
     fn cuda_get_info(id: i32, max_memory: *mut u64, max_threading: *mut u64);
 }
 
@@ -165,19 +228,36 @@ pub fn NTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    let err = unsafe {
-        compute_ntt(
-            device_id,
-            inout.as_mut_ptr() as *mut core::ffi::c_void,
-            len.trailing_zeros(),
-            order,
-            NTTDirection::Forward,
-            NTTType::Standard,
-        )
-    };
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
 
-    if err.code != 0 {
-        panic!("{}", String::from(err));
+    // Total memory required
+    let total_memory = size_of_t * inout.len();
+
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+
+        let err = unsafe {
+            compute_ntt(
+                device_id,
+                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                len.trailing_zeros(),
+                order,
+                NTTDirection::Forward,
+                NTTType::Standard,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
     }
 }
 
@@ -187,19 +267,36 @@ pub fn iNTT<T>(device_id: usize, inout: &mut [T], order: NTTInputOutputOrder) {
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    let err = unsafe {
-        compute_ntt(
-            device_id,
-            inout.as_mut_ptr() as *mut core::ffi::c_void,
-            len.trailing_zeros(),
-            order,
-            NTTDirection::Inverse,
-            NTTType::Standard,
-        )
-    };
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
 
-    if err.code != 0 {
-        panic!("{}", String::from(err));
+    // Total memory required
+    let total_memory = size_of_t * inout.len();
+
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+
+        let err = unsafe {
+            compute_ntt(
+                device_id,
+                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                len.trailing_zeros(),
+                order,
+                NTTDirection::Inverse,
+                NTTType::Standard,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
     }
 }
 
@@ -212,19 +309,38 @@ pub fn coset_NTT<T>(
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    let err = unsafe {
-        compute_ntt(
-            device_id,
-            inout.as_mut_ptr() as *mut core::ffi::c_void,
-            len.trailing_zeros(),
-            order,
-            NTTDirection::Forward,
-            NTTType::Coset,
-        )
-    };
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+    // Total memory required
+    let total_memory = size_of_t * inout.len();
 
-    if err.code != 0 {
-        panic!("{}", String::from(err));
+    let (mut round, mut domain_size) = (0, 0);
+    if total_memory > 0 {
+        (round, domain_size) =
+            compute_mem_segment(device_id, len, total_memory);
+    }
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+
+        let err = unsafe {
+            compute_ntt(
+                device_id,
+                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                len.trailing_zeros(),
+                order,
+                NTTDirection::Forward,
+                NTTType::Coset,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
     }
 }
 
@@ -237,20 +353,94 @@ pub fn coset_iNTT<T>(
     let len = inout.len();
     check_len!(len, device_id, T);
 
-    let err = unsafe {
-        compute_ntt(
-            device_id,
-            inout.as_mut_ptr() as *mut core::ffi::c_void,
-            len.trailing_zeros(),
-            order,
-            NTTDirection::Inverse,
-            NTTType::Coset,
-        )
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+
+    // Total memory required
+    let total_memory = size_of_t * inout.len();
+
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+
+        let err = unsafe {
+            compute_ntt(
+                device_id,
+                inout[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                len.trailing_zeros(),
+                order,
+                NTTDirection::Inverse,
+                NTTType::Coset,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
+    }
+}
+
+pub fn parallelized_range<T>(device_id: usize, len: usize) -> usize {
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+
+    // Total memory required
+    let total_memory = size_of_t * len;
+
+    // Available memory
+    let gpu_memory = {
+        let gpu_mem = if device_id != *DEFAULT_GPU {
+            get_cuda_info(device_id as i32).0
+        } else {
+            *DEFAULT_GPU_MAX_MEMORY
+        };
+        gpu_mem - *MEMORY_RESERVE
     };
 
-    if err.code != 0 {
-        panic!("{}", String::from(err));
-    }
+    gpu_memory as usize / total_memory
+}
+
+pub fn compute_mem_segment(
+    device_id: usize,
+    len: usize,
+    mem_requied: usize,
+) -> (usize, usize) {
+    // Available memory
+    let gpu_memory = {
+        let gpu_mem = if device_id != *DEFAULT_GPU {
+            get_cuda_info(device_id as i32).0
+        } else {
+            *DEFAULT_GPU_MAX_MEMORY
+        };
+        gpu_mem - *MEMORY_RESERVE
+    };
+    // How many round if memory is not enough
+    let round = (mem_requied as u64 + gpu_memory - 1) / gpu_memory;
+    let round = round as usize;
+    // Proper size (of buffer length)
+    let domain_size = (len + round - 1) / round as usize;
+
+    // Thread number
+    let thread_num = if device_id != *DEFAULT_GPU {
+        get_cuda_info(device_id as i32).1
+    } else {
+        *DEFAULT_GPU_MAX_THREADING
+    };
+
+    // Normally GPU threading is around 2^63 or so, simply calculation will
+    // leads to u64 overflow So we only need to check if domain size is
+    // smaller than thread number
+    assert!(domain_size <= thread_num as usize);
+    // println!("buffer size {}, total memory needed {} bytes, gpu memory
+    // available {} bytes, domain_size: {}, rounds: {}", len, mem_requied,
+    // gpu_memory, domain_size, len / domain_size);
+    (round, domain_size)
 }
 
 pub fn quotient_term_gpu<T>(
@@ -366,41 +556,8 @@ pub fn quotient_term_gpu<T>(
     let total_memory =
         size_of_t * (aux.len() * len + aux2.len() * (len + 8) + 5 + 2 + 6);
 
-    // Available memory
-    let gpu_memory = {
-        let gpu_mem = if device_id != *DEFAULT_GPU {
-            get_cuda_info(device_id as i32).0
-        } else {
-            *DEFAULT_GPU_MAX_MEMORY
-        };
-        gpu_mem - *MEMORY_RESERVE
-    };
-    // TEST USE ONLY
-    // let gpu_memory = total_memory as u64 / 7;
-
-    // How many round if memory is not enough
-    let round = (total_memory as u64 + gpu_memory - 1) / gpu_memory;
-    let round = round as usize;
-
-    // Proper size (of buffer length)
-    let domain_size = (len + round - 1) / round as usize;
-
-    // domain_size is no need for 2^n, however total size should cover len
-    assert!(domain_size * round >= len);
-
-    // Thread number
-    let thread_num = if device_id != *DEFAULT_GPU {
-        get_cuda_info(device_id as i32).1
-    } else {
-        *DEFAULT_GPU_MAX_THREADING
-    };
-
-    // Normally GPU threading is around 2^63 or so, simply calculation will
-    // leads to u64 overflow So we only need to check if domain size is
-    // smaller than thread number
-    assert!(domain_size <= thread_num as usize);
-
-    println!("buffer size {}, total memory needed {} bytes, gpu memory available {} bytes, domain_size: {}, round: {}", len, total_memory, gpu_memory, domain_size, len / domain_size);
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
 
     // Burden same GPU for now
     // Submit all buffer to same GPU in sequence
@@ -410,10 +567,11 @@ pub fn quotient_term_gpu<T>(
         let end = std::cmp::min((i + 1) * domain_size, len);
         let extend_end = end + 8;
 
-        println!(
-            "round {}, start {}, end {}, extend_end {}",
-            i, start, end, extend_end
-        );
+        // println!(
+        //     "round {}, start {}, end {}, extend_end {}",
+        //     i, start, end, extend_end
+        // );
+
         // Simple memory sanitizer
         {
             let _ = w_l[start];
@@ -474,9 +632,286 @@ pub fn quotient_term_gpu<T>(
     }
 }
 
+pub fn product_argument_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    root: &[T],
+    gate_sigma0: &[T],
+    gate_sigma1: &[T],
+    gate_sigma2: &[T],
+    gate_sigma3: &[T],
+    gate_wire0: &[T],
+    gate_wire1: &[T],
+    gate_wire2: &[T],
+    gate_wire3: &[T],
+    ks: &[T],
+    beta: T,
+    gamma: T,
+) {
+    let aux = vec![
+        out.len(),
+        root.len(),
+        gate_sigma0.len(),
+        gate_sigma1.len(),
+        gate_sigma2.len(),
+        gate_sigma3.len(),
+        gate_wire0.len(),
+        gate_wire1.len(),
+        gate_wire2.len(),
+        gate_wire3.len(),
+    ];
+
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    assert!(ks.len() == 4);
+
+    let len = aux[0];
+
+    let beta_arr = &[beta];
+    let gamma_arr = &[gamma];
+
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+    // Total memory required
+    let total_memory = size_of_t * (aux.len() * len + ks.len() + 2);
+
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+        let err = unsafe {
+            compute_product_argument(
+                device_id,
+                len.trailing_zeros(),
+                out[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                root[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_sigma0[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_sigma1[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_sigma2[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_sigma3[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_wire0[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_wire1[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_wire2[start..end].as_ptr() as *const core::ffi::c_void,
+                gate_wire3[start..end].as_ptr() as *const core::ffi::c_void,
+                ks.as_ptr() as *const core::ffi::c_void,
+                beta_arr.as_ptr() as *const core::ffi::c_void,
+                gamma_arr.as_ptr() as *const core::ffi::c_void,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
+    }
+}
+
+pub fn lookup_product_argument_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    f: &[T],
+    t: &[T],
+    t_next: &[T],
+    h_1: &[T],
+    h_1_next: &[T],
+    h_2: &[T],
+    delta: T,
+    epsilon: T,
+) {
+    let aux = vec![
+        f.len(),
+        t.len(),
+        t_next.len(),
+        h_1.len(),
+        h_1_next.len(),
+        h_2.len(),
+    ];
+
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    let len = aux[0];
+
+    let delta_arr = &[delta];
+    let epsilon_arr = &[epsilon];
+
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+    // Total memory required
+    let total_memory = size_of_t * (aux.len() * len + 2);
+
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+        let err = unsafe {
+            compute_lookup_product_argument(
+                device_id,
+                len.trailing_zeros(),
+                out[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                f[start..end].as_ptr() as *const core::ffi::c_void,
+                t[start..end].as_ptr() as *const core::ffi::c_void,
+                t_next[start..end].as_ptr() as *const core::ffi::c_void,
+                h_1[start..end].as_ptr() as *const core::ffi::c_void,
+                h_1_next[start..end].as_ptr() as *const core::ffi::c_void,
+                h_2[start..end].as_ptr() as *const core::ffi::c_void,
+                delta_arr.as_ptr() as *const core::ffi::c_void,
+                epsilon_arr.as_ptr() as *const core::ffi::c_void,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
+    }
+}
+
 pub fn get_cuda_info(device_id: i32) -> (u64, u64) {
     let mut max_memory: u64 = 0;
     let mut max_threading: u64 = 0;
     unsafe { cuda_get_info(device_id, &mut max_memory, &mut max_threading) };
     (max_memory, max_threading)
+}
+
+#[allow(unused_macros)]
+macro_rules! param {
+    ($var: ident, $len: ident, $start: ident, $end: ident) => {
+        if $var.len() == $len {
+            $var[$start..$end].as_ptr() as *const core::ffi::c_void
+        } else {
+            $var.as_ptr() as *const core::ffi::c_void
+        }
+    };
+}
+
+// for plonk linearisation_poly optimization
+pub fn linear_poly_gpu<T>(
+    device_id: usize,
+    out: &mut [T],
+    q_m: &[T],
+    q_l: &[T],
+    q_r: &[T],
+    q_o: &[T],
+    q_4: &[T],
+    q_hl: &[T],
+    q_hr: &[T],
+    q_h4: &[T],
+    q_c: &[T],
+    z_poly: &[T],
+    fourth_sigma: &[T],
+    t_1_poly: &[T],
+    t_2_poly: &[T],
+    t_3_poly: &[T],
+    t_4_poly: &[T],
+    t_5_poly: &[T],
+    t_6_poly: &[T],
+    t_7_poly: &[T],
+    t_8_poly: &[T],
+    wit_vals: &[T],
+    perm_vals: &[T],
+    power: &[u64],
+) {
+    let aux = vec![
+        out.len(),
+        q_l.len(),
+        q_r.len(),
+        q_o.len(),
+        q_4.len(),
+        q_hl.len(),
+        q_hr.len(),
+        q_h4.len(),
+        q_c.len(),
+        z_poly.len(),
+        fourth_sigma.len(),
+        t_1_poly.len(),
+        t_2_poly.len(),
+        t_3_poly.len(),
+        t_4_poly.len(),
+        t_5_poly.len(),
+    ];
+
+    let all_same_length = aux.iter().all(|v| *v == aux[0]);
+    if !all_same_length {
+        panic!(" input series must have the same length ");
+    }
+
+    assert!(wit_vals.len() == 5, "wit_vals must have 5 vals");
+    assert!(perm_vals.len() == 11);
+    assert!(power.len() == 1);
+
+    let len = aux[0];
+
+    // Single size of T
+    let size_of_t = std::mem::size_of::<T>();
+    // Total memory required
+    let total_memory = size_of_t
+        * (aux.len() * len
+            + q_m.len()  // q_m's len is zero in this case
+            + t_6_poly.len() // len is -6 less than aux[0] in this case
+            + t_7_poly.len() // len is zero in this case
+            + t_8_poly.len() // len is zero in this case
+            + wit_vals.len()
+            + perm_vals.len()
+            + power.len());
+
+    let (round, domain_size) =
+        compute_mem_segment(device_id, len, total_memory);
+
+    // Burden same GPU for now
+    // Submit all buffer to same GPU in sequence
+    for i in 0..round {
+        // Compute the start and end index
+        let start = i * domain_size;
+        let end = std::cmp::min((i + 1) * domain_size, len);
+        let t_poly_6_end = std::cmp::min((i + 1) * domain_size, t_6_poly.len());
+
+        let err = unsafe {
+            compute_linear_poly(
+                device_id,
+                len.trailing_zeros(),
+                out[start..end].as_mut_ptr() as *mut core::ffi::c_void,
+                param!(q_m, len, start, end),
+                q_l[start..end].as_ptr() as *const core::ffi::c_void,
+                q_r[start..end].as_ptr() as *const core::ffi::c_void,
+                q_o[start..end].as_ptr() as *const core::ffi::c_void,
+                q_4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_hl[start..end].as_ptr() as *const core::ffi::c_void,
+                q_hr[start..end].as_ptr() as *const core::ffi::c_void,
+                q_h4[start..end].as_ptr() as *const core::ffi::c_void,
+                q_c[start..end].as_ptr() as *const core::ffi::c_void,
+                z_poly[start..end].as_ptr() as *const core::ffi::c_void,
+                fourth_sigma[start..end].as_ptr() as *const core::ffi::c_void,
+                t_1_poly[start..end].as_ptr() as *const core::ffi::c_void,
+                t_2_poly[start..end].as_ptr() as *const core::ffi::c_void,
+                t_3_poly[start..end].as_ptr() as *const core::ffi::c_void,
+                t_4_poly[start..end].as_ptr() as *const core::ffi::c_void,
+                t_5_poly[start..end].as_ptr() as *const core::ffi::c_void,
+                t_6_poly[start..t_poly_6_end].as_ptr()
+                    as *const core::ffi::c_void,
+                param!(t_7_poly, len, start, end),
+                param!(t_8_poly, len, start, end),
+                wit_vals.as_ptr() as *const core::ffi::c_void,
+                perm_vals.as_ptr() as *const core::ffi::c_void,
+                power.as_ptr() as *const u64,
+            )
+        };
+
+        if err.code != 0 {
+            panic!("{}", String::from(err));
+        }
+    }
 }

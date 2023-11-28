@@ -76,6 +76,18 @@ fn test_against_arkworks() {
                 NTTInputOutputOrder::NN,
             );
             assert!(vtest == v);
+
+            ntt_cuda::coset_NTT(
+                DEFAULT_GPU,
+                &mut vtest,
+                NTTInputOutputOrder::NR,
+            );
+            ntt_cuda::coset_iNTT(
+                DEFAULT_GPU,
+                &mut vtest,
+                NTTInputOutputOrder::RN,
+            );
+            assert!(vtest == v);
         }
     }
 
