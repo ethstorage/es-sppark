@@ -318,6 +318,33 @@ pub fn coset_iNTT<T>(
     }
 }
 
+/// Compute an in-place NTT on the input data.
+/// But this one accepts a size which might not be power of 2 (unaligned)
+#[allow(non_snake_case)]
+pub fn coset_NTT_unaligned<T>(
+    device_id: usize,
+    inout: &mut [T],
+    len: usize,
+    order: NTTInputOutputOrder,
+) {
+    check_len!(len, device_id, T);
+
+    let err = unsafe {
+        compute_ntt(
+            device_id,
+            inout.as_mut_ptr() as *mut core::ffi::c_void,
+            len.trailing_zeros(),
+            order,
+            NTTDirection::Forward,
+            NTTType::Coset,
+        )
+    };
+
+    if err.code != 0 {
+        panic!("{}", String::from(err));
+    }
+}
+
 pub fn parallelized_range<T>(device_id: usize, len: usize) -> usize {
     // Single size of T
     let size_of_t = std::mem::size_of::<T>();
