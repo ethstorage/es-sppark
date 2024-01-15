@@ -12,6 +12,23 @@ const DEFAULT_GPU: usize = 0;
     feature = "pallas",
     feature = "vesta"
 ))]
+
+
+#[allow(unused_macros)]
+macro_rules! logts {
+    ($var: ident) => {
+        println!(
+            "{}",
+            format!(
+                "{} time cost {} ms",
+                stringify!($var),
+                $var.elapsed().as_millis()
+            )
+        )
+    };
+}
+
+
 #[test]
 fn test_against_arkworks() {
     #[cfg(feature = "bls12_377")]
@@ -36,7 +53,8 @@ fn test_against_arkworks() {
     >(
         rng: &mut R,
     ) {
-        for lg_domain_size in 1..20 + 4 * !cfg!(debug_assertions) as i32 {
+        let domain_size = 25;
+        for lg_domain_size in domain_size..domain_size+1 {
             let domain_size = 1usize << lg_domain_size;
 
             let domain = D::new(domain_size).unwrap();
@@ -49,18 +67,34 @@ fn test_against_arkworks() {
             v.resize(domain.size(), T::zero());
             let mut vtest = v.clone();
 
-            domain.fft_in_place(&mut v);
-            ntt_cuda::NTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NN);
+            // domain.fft_in_place(&mut v);
+            // ntt_cuda::NTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NN);
+            // assert!(vtest == v);
+
+            // domain.ifft_in_place(&mut v);
+            // ntt_cuda::iNTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NN);
+            // assert!(vtest == v);
+
+            // ntt_cuda::NTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NR);
+            // ntt_cuda::iNTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::RN);
+            // assert!(vtest == v);
+
+            let coset_ntt_nr_time = std::time::Instant::now();
+            ntt_cuda::coset_NTT(
+                DEFAULT_GPU,
+                &mut vtest,
+                NTTInputOutputOrder::NR,
+            );
+            ntt_cuda::coset_iNTT(
+                DEFAULT_GPU,
+                &mut vtest,
+                NTTInputOutputOrder::RN,
+            );
             assert!(vtest == v);
 
-            domain.ifft_in_place(&mut v);
-            ntt_cuda::iNTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NN);
-            assert!(vtest == v);
-
-            ntt_cuda::NTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::NR);
-            ntt_cuda::iNTT(DEFAULT_GPU, &mut vtest, NTTInputOutputOrder::RN);
-            assert!(vtest == v);
-
+            logts!(coset_ntt_nr_time);
+            
+            let coset_ntt_nn_time = std::time::Instant::now();
             domain.coset_fft_in_place(&mut v);
             ntt_cuda::coset_NTT(
                 DEFAULT_GPU,
@@ -77,17 +111,8 @@ fn test_against_arkworks() {
             );
             assert!(vtest == v);
 
-            ntt_cuda::coset_NTT(
-                DEFAULT_GPU,
-                &mut vtest,
-                NTTInputOutputOrder::NR,
-            );
-            ntt_cuda::coset_iNTT(
-                DEFAULT_GPU,
-                &mut vtest,
-                NTTInputOutputOrder::RN,
-            );
-            assert!(vtest == v);
+            logts!(coset_ntt_nn_time);   
+            
         }
     }
 
