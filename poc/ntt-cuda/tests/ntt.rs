@@ -93,25 +93,36 @@ fn test_against_arkworks() {
             assert!(vtest == v);
 
             logts!(coset_ntt_nr_time);
-            
-            let coset_ntt_nn_time = std::time::Instant::now();
-            domain.coset_fft_in_place(&mut v);
+
+            let coset_ntt_nr_time = std::time::Instant::now();
             ntt_cuda::coset_NTT(
                 DEFAULT_GPU,
                 &mut vtest,
-                NTTInputOutputOrder::NN,
+                NTTInputOutputOrder::NR,
             );
-            assert!(vtest == v);
-
-            domain.coset_ifft_in_place(&mut v);
             ntt_cuda::coset_iNTT(
                 DEFAULT_GPU,
                 &mut vtest,
-                NTTInputOutputOrder::NN,
+                NTTInputOutputOrder::RN,
             );
             assert!(vtest == v);
 
-            logts!(coset_ntt_nn_time);   
+            logts!(coset_ntt_nr_time);
+            
+            // let coset_ntt_nn_time = std::time::Instant::now();
+            // ntt_cuda::coset_NTT(
+            //     DEFAULT_GPU,
+            //     &mut vtest,
+            //     NTTInputOutputOrder::NN,
+            // );
+
+            // ntt_cuda::coset_iNTT(
+            //     DEFAULT_GPU,
+            //     &mut vtest,
+            //     NTTInputOutputOrder::NN,
+            // );
+
+            // logts!(coset_ntt_nn_time);   
             
         }
     }
@@ -165,3 +176,4 @@ fn test_against_arkworks() {
     test_ntt::<Fr, Fr, _, GeneralEvaluationDomain<Fr>>(rng);
     //test_arith::<Fr, Fr, _, GeneralEvaluationDomain<Fr>>(rng);
 }
+    
