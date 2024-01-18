@@ -34,6 +34,21 @@ RustError compute_ntt(size_t device_id, fr_t* inout, uint32_t lg_domain_size,
 }
 
 extern "C"
+RustError compute_ntt_unaligned(size_t device_id,
+                               fr_t* inout,
+                               uint32_t input_size,
+                               uint32_t lg_domain_size,
+                               NTT::InputOutputOrder ntt_order,
+                               NTT::Direction ntt_direction,
+                               NTT::Type ntt_type)
+{
+    auto& gpu = select_gpu(device_id);
+
+    return NTT::Unalgined(gpu, inout, input_size, lg_domain_size,
+                     ntt_order, ntt_direction, ntt_type);
+}
+
+extern "C"
 RustError compute_quotient_term(size_t device_id, size_t domain_size,
                                   fr_t* out TOTAL_ARGUMENT)
 {
