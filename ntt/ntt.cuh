@@ -160,6 +160,46 @@ public:
         return RustError{cudaSuccess};
     }
 
+    static RustError Unalgined(const gpu_t& gpu, fr_t* inout,
+                          uint32_t input_size, uint32_t lg_domain_size,
+                          InputOutputOrder order, Direction direction,
+                          Type type)
+    {
+        if (lg_domain_size == 0)
+            return RustError{cudaSuccess};
+
+        try {
+            gpu.select();
+
+            // Extend for output use
+            size_t domain_size = (size_t)1 << lg_domain_size;
+            // Allocate device buffer as large as output to perform NTT
+            dev_ptr_t<fr_t> d_inout{domain_size, gpu};
+            // Init
+            // TODO: Here we init whole buffer, but we can further optimize it
+            //       by init only the "extra part" other than input data, by using
+            //       offset starting from input_size
+            d_inout.zeroed(domain_size);
+            // Copy ONLY input data to device buffer
+            gpu.HtoD(&d_inout[0], inout, input_size);
+
+
+            NTT_internal(&d_inout[0], lg_domain_size, order, direction, type, gpu);
+
+            gpu.DtoH(inout, &d_inout[0], domain_size);
+            gpu.sync();
+        } catch (const cuda_error& e) {
+            gpu.sync();
+#ifdef TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE
+            return RustError{e.code(), e.what()};
+#else
+            return RustError{e.code()};
+#endif
+        }
+
+        return RustError{cudaSuccess};
+    }
+
     static RustError LDE(const gpu_t& gpu, fr_t* inout,
                          uint32_t lg_domain_size, uint32_t lg_blowup)
     {

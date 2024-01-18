@@ -59,6 +59,18 @@ extern "C" {
 }
 
 extern "C" {
+    fn compute_ntt_unaligned(
+        device_id: usize,
+        inout: *mut core::ffi::c_void,
+        in_size: u32,
+        out_size_lg_domain: u32,
+        ntt_order: NTTInputOutputOrder,
+        ntt_direction: NTTDirection,
+        ntt_type: NTTType,
+    ) -> cuda::Error;
+}
+
+extern "C" {
     fn compute_quotient_term(
         device_id: usize,
         domain_size: usize,
@@ -324,16 +336,19 @@ pub fn coset_iNTT<T>(
 pub fn coset_NTT_unaligned<T>(
     device_id: usize,
     inout: &mut [T],
-    len: usize,
+    in_size: usize,
+    out_size: usize,
     order: NTTInputOutputOrder,
 ) {
-    check_len!(len, device_id, T);
+    assert!(in_size <= out_size);
+    check_len!(out_size, device_id, T);
 
     let err = unsafe {
-        compute_ntt(
+        compute_ntt_unaligned(
             device_id,
             inout.as_mut_ptr() as *mut core::ffi::c_void,
-            len.trailing_zeros(),
+            in_size as u32,
+            out_size.trailing_zeros(),
             order,
             NTTDirection::Forward,
             NTTType::Coset,
