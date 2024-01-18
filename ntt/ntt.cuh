@@ -160,8 +160,8 @@ public:
         return RustError{cudaSuccess};
     }
 
-    static RustError Unalgined(const gpu_t& gpu, fr_t* inout,
-                          uint32_t input_size, uint32_t lg_domain_size,
+    static RustError Unalgined(const gpu_t& gpu, const fr_t* input, uint32_t input_size,
+                          fr_t* output, uint32_t lg_domain_size,
                           InputOutputOrder order, Direction direction,
                           Type type)
     {
@@ -180,13 +180,12 @@ public:
             //       by init only the "extra part" other than input data, by using
             //       offset starting from input_size
             d_inout.zeroed(domain_size);
-            // Copy ONLY input data to device buffer
-            gpu.HtoD(&d_inout[0], inout, input_size);
-
+            // Copy input data to device buffer
+            gpu.HtoD(&d_inout[0], input, input_size);
 
             NTT_internal(&d_inout[0], lg_domain_size, order, direction, type, gpu);
 
-            gpu.DtoH(inout, &d_inout[0], domain_size);
+            gpu.DtoH(output, &d_inout[0], domain_size);
             gpu.sync();
         } catch (const cuda_error& e) {
             gpu.sync();

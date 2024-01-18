@@ -61,8 +61,9 @@ extern "C" {
 extern "C" {
     fn compute_ntt_unaligned(
         device_id: usize,
-        inout: *mut core::ffi::c_void,
+        input: *const core::ffi::c_void,
         in_size: u32,
+        output: *mut core::ffi::c_void,
         out_size_lg_domain: u32,
         ntt_order: NTTInputOutputOrder,
         ntt_direction: NTTDirection,
@@ -335,20 +336,22 @@ pub fn coset_iNTT<T>(
 #[allow(non_snake_case)]
 pub fn coset_NTT_unaligned<T>(
     device_id: usize,
-    inout: &mut [T],
-    in_size: usize,
-    out_size: usize,
+    input: &[T],
+    input_size: usize,
+    output: &mut [T],
+    output_size: usize,
     order: NTTInputOutputOrder,
 ) {
-    assert!(in_size <= out_size);
-    check_len!(out_size, device_id, T);
+    assert!(input_size <= output_size);
+    check_len!(output_size, device_id, T);
 
     let err = unsafe {
         compute_ntt_unaligned(
             device_id,
-            inout.as_mut_ptr() as *mut core::ffi::c_void,
-            in_size as u32,
-            out_size.trailing_zeros(),
+            input.as_ptr() as *const core::ffi::c_void,
+            input_size as u32,
+            output.as_mut_ptr() as *mut core::ffi::c_void,
+            output_size.trailing_zeros(),
             order,
             NTTDirection::Forward,
             NTTType::Coset,
