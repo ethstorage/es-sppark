@@ -53,7 +53,8 @@ extern "C"
 RustError compute_quotient_term(size_t device_id, size_t domain_size,
                                   fr_t* out TOTAL_ARGUMENT)
 {
-    auto& gpu = select_gpu(device_id);
+    auto& gpu_template = select_gpu(device_id);
+    gpu_t gpu(gpu_template.id(), gpu_template.cid(), gpu_template.props());
 
     return ARITHMETIC::quotient_poly_gpu(gpu, domain_size, out TOTAL_PARAMETER);
 }
@@ -62,7 +63,8 @@ extern "C"
 RustError compute_product_argument(size_t device_id, uint32_t lg_domain_size,
                                   fr_t* out PRODUCT_ARGUMENT)
 {
-    auto& gpu = select_gpu(device_id);
+    auto& gpu_template = select_gpu(device_id);
+    gpu_t gpu(gpu_template.id(), gpu_template.cid(), gpu_template.props());
 
     return ARITHMETIC::product_argument_gpu(gpu, lg_domain_size, out PRODUCT_PARAMETER);
 }
@@ -71,7 +73,8 @@ extern "C"
 RustError compute_lookup_product_argument(size_t device_id, uint32_t lg_domain_size,
                                   fr_t* out LOOKUP_PRODUCT_ARGUMENT)
 {
-    auto& gpu = select_gpu(device_id);
+    auto& gpu_template = select_gpu(device_id);
+    gpu_t gpu(gpu_template.id(), gpu_template.cid(), gpu_template.props());
 
     return ARITHMETIC::lookup_product_argument_gpu(gpu, lg_domain_size, out LOOKUP_PRODUCT_PARAMETER);
 }
@@ -80,7 +83,8 @@ extern "C"
 RustError compute_linear_poly(size_t device_id, uint32_t lg_domain_size,
                                   fr_t* out LINEAR_POLY_ARGUMENT)
 {
-    auto& gpu = select_gpu(device_id);
+    auto& gpu_template = select_gpu(device_id);
+    gpu_t gpu(gpu_template.id(), gpu_template.cid(), gpu_template.props());
 
     return ARITHMETIC::linear_poly_gpu(gpu, lg_domain_size, out LINEAR_POLY_PARAMETER);
 }
